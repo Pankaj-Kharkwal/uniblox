@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
 from loom import __version__
+from loom.ambiguity import Ambiguity, settle
 from loom.errors import LoomError
 from loom.frontend import load
+from loom.llm import ClaudeClient
+from loom.nodes import Does
+from loom.render import render_line
 
 app = typer.Typer(
     add_completion=False,
@@ -18,6 +24,37 @@ app = typer.Typer(
 )
 
 FileArg = Annotated[Path, typer.Argument(exists=True, dir_okay=False, help="A .loom file")]
+ModelOpt = Annotated[
+    str | None,
+    typer.Option("--model", help="Claude model (default: $LOOM_MODEL or claude-sonnet-5-5)."),
+]
+YesOpt = Annotated[
+    bool, typer.Option("--yes", "-y", help="Accept the suggested answer to every ambiguity.")
+]
+
+
+def _interactive() -> bool:
+    return os.environ.get("LOOM_INTERACTIVE") == "1" or sys.stdin.isatty()
+
+
+def _ask(amb: Ambiguity, does: Does) -> str | None:
+    """Ask the user one ambiguity question on the terminal."""
+    typer.echo("")
+    where = f"does {does.description}"
+    if 0 <= amb.line < len(does.lines):
+        where += f' · "{render_line(does.lines[amb.line])}"'
+    typer.secho(f"? {where}", bold=True)
+    typer.echo(f"  {amb.question}")
+    if amb.why:
+        typer.echo(f"  why it matters: {amb.why}")
+    for i, option in enumerate(amb.options, start=1):
+        marker = "  (suggested)" if i - 1 == amb.suggested else ""
+        typer.echo(f"   {i}) {option}{marker}")
+    reply: str = typer.prompt("  answer (number, or type your own)", default=str(amb.suggested + 1))
+    reply = reply.strip()
+    if reply.isdigit() and 1 <= int(reply) <= len(amb.options):
+        return amb.options[int(reply) - 1]
+    return reply or None
 
 
 def _fail(err: LoomError) -> None:
@@ -31,10 +68,22 @@ def check(
     no_scan: Annotated[
         bool, typer.Option("--no-scan", help="Skip the LLM ambiguity scan (parse + types only).")
     ] = False,
+    yes: YesOpt = False,
+    model: ModelOpt = None,
 ) -> None:
-    """Parse and type-check a .loom file. Exit 1 on any error."""
+    """Parse, type-check and scan for ambiguities, without generating code.
+
+    Exit 1 on any error, including an ambiguity left unanswered.
+    """
     try:
         fe = load(file)
+        if not no_scan:
+            llm = ClaudeClient.from_env(model)
+            fe, answers = settle(
+                file, fe, llm, fe.program.does, yes=yes, ask=_ask if _interactive() else None
+            )
+            for a in answers:
+                typer.echo(f"decided ({a.block}): {a.text}")
     except LoomError as err:
         _fail(err)
         return
