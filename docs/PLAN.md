@@ -40,7 +40,7 @@ Targets are hypotheses for the pilot.
 
 ## Phases
 
-### Phase 1: trust core (now, no API key needed)
+### Phase 1: trust core (done: M4–M6 shipped, no API key needed)
 - **M4**: green loop (repair only the failing block), test immutability (hash plus read-only),
   lockfile, incremental rebuild, zero-call rebuild.
 - **M5**: `invoice_chaser.loom` end to end: outbox, scheduler stub, the 24h rule as a runtime

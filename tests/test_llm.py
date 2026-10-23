@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import anthropic
-import httpx
+import httpx2
 import pytest
 from fakes import FakeSDK, message
 
@@ -46,7 +46,7 @@ def client(tmp_path: Path, sdk: FakeSDK, **kw: object) -> ClaudeClient:
 
 
 def status_error(cls: type[anthropic.APIStatusError], code: int) -> anthropic.APIStatusError:
-    response = httpx.Response(code, request=httpx.Request("POST", "https://api.anthropic.com"))
+    response = httpx2.Response(code, request=httpx2.Request("POST", "https://api.anthropic.com"))
     return cls("boom", response=response, body=None)
 
 
