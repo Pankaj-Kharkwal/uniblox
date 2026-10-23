@@ -74,3 +74,40 @@ class FakeSDK:
         if isinstance(item, BaseException):
             raise item
         yield SimpleNamespace(get_final_message=lambda: item)
+
+
+def recorded_outputs() -> dict[tuple[str, str], dict[str, Any]]:
+    """Recorded fixture outputs by (kind, label), for FakeLLMs that ignore exact prompts.
+
+    Ambiguity responses are left out: a block has several (before and after decisions).
+    """
+    from pathlib import Path
+
+    out: dict[tuple[str, str], dict[str, Any]] = {}
+    for path in sorted((Path(__file__).parent / "fixtures" / "llm").glob("*.json")):
+        entry = json.loads(path.read_text())
+        if entry["kind"] != "ambiguity":
+            out[(entry["kind"], entry["label"])] = entry["output"]
+    return out
+
+
+def replaying_llm(overrides: dict[tuple[str, str], Any] | None = None) -> FakeLLM:
+    """A FakeLLM answering from the recorded fixtures by (kind, label), never asking questions.
+
+    ``overrides`` maps (kind, label) to an output dict, or to a list of outputs used in turn.
+    """
+    recorded = recorded_outputs()
+    queues = {k: (list(v) if isinstance(v, list) else v) for k, v in (overrides or {}).items()}
+
+    def respond(request: LLMRequest) -> dict[str, Any]:
+        key = (request.kind, request.label)
+        if request.kind == "ambiguity":
+            return {"ambiguities": []}
+        if key in queues:
+            value = queues[key]
+            if isinstance(value, list):
+                return value.pop(0) if len(value) > 1 else value[0]
+            return value
+        return recorded[key]
+
+    return FakeLLM(respond)

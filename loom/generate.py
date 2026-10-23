@@ -57,7 +57,13 @@ def guard_ids(does: Does) -> list[str]:
     return [f"{does.slug}:{rid}" for rid, _ in does.rule_ids()]
 
 
-def block_brief(fe: Frontend, does: Does, proj: Project, others: Mapping[str, str]) -> str:
+def block_brief(
+    fe: Frontend,
+    does: Does,
+    proj: Project,
+    others: Mapping[str, str],
+    previous_signature: str | None = None,
+) -> str:
     """The per-block part of a codegen or repair prompt."""
     pkg = proj.package
     out = [
@@ -78,6 +84,12 @@ def block_brief(fe: Frontend, does: Does, proj: Project, others: Mapping[str, st
     if does.exacts:
         out.append(f"Exact code of this block, importable from `{pkg}.{does.slug}_exact`:")
         out += [render_exact(e) for e in does.exacts]
+        out.append("")
+    if previous_signature:
+        out.append(
+            f"The previous version of this function had the signature `{previous_signature}`. "
+            "Keep it unless the change to the block requires a different one."
+        )
         out.append("")
     if others:
         out.append("Other functions already generated in this project (signatures only):")
@@ -133,8 +145,9 @@ def generate_block(
     others: Mapping[str, str],
     *,
     context: str,
+    previous_signature: str | None = None,
 ) -> GeneratedModule:
-    prompt = block_brief(fe, does, proj, others) + "\nWrite the module."
+    prompt = block_brief(fe, does, proj, others, previous_signature) + "\nWrite the module."
     request = LLMRequest(
         kind="codegen",
         label=f"does:{does.slug}",

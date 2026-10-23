@@ -112,20 +112,37 @@ def _summary(result: RunResult) -> str:
 
 
 def _red_report(report: BuildReport) -> None:
-    result = report.result
-    assert result is not None
-    typer.secho("RED: the generated tests do not pass", fg="red", bold=True, err=True)
+    loop = report.loop
+    assert loop is not None
+    result = loop.result
+    typer.secho(
+        f"RED: still failing after {loop.rounds} repair round(s) (--max-iters reached)"
+        if loop.rounds
+        else "RED: the generated tests do not pass",
+        fg="red",
+        bold=True,
+        err=True,
+    )
     by_block: dict[str, list[str]] = {}
     for case in result.failures:
+        first = case.message.splitlines()[0] if case.message else case.outcome
         by_block.setdefault(case.block or case.file, []).append(
-            f"{case.name}: {case.message.splitlines()[0] if case.message else case.outcome}"
+            f"{case.file}::{case.name}: {first}"
         )
     for block, lines in sorted(by_block.items()):
-        typer.echo(f"  does {block}:", err=True)
+        tries = loop.iterations.get(block, 0)
+        typer.echo(f"  does {block} ({tries} repair attempt(s)):", err=True)
         for line in lines:
             typer.echo(f"    - {line}", err=True)
+        for err in loop.repair_errors.get(block, []):
+            typer.echo(f"    ! rejected repair: {err.splitlines()[0]}", err=True)
     if not by_block:
         typer.echo(result.output[-3000:], err=True)
+    typer.echo(
+        f"  {len(loop.test_hashes)} locked test file(s) verified unchanged. The tests come from "
+        "your examples and rules: if one of them is wrong, fix it in the .loom file.",
+        err=True,
+    )
 
 
 @app.command("build")
@@ -142,7 +159,6 @@ def build_cmd(
     out: OutOpt = None,
 ) -> None:
     """Compile a .loom file into a tested Python project and write <file>.lock."""
-    llm = ClaudeClient.from_env(model)
     opts = BuildOptions(
         out_dir=out,
         yes=yes,
@@ -152,17 +168,24 @@ def build_cmd(
         echo=typer.echo,
     )
     try:
-        report = build(file, llm, opts)
+        report = build(file, lambda: ClaudeClient.from_env(model), opts)
     except LoomError as err:
         _fail(err)
         return
-    if report.result is None:
-        typer.echo("nothing to rebuild")
+    if report.nothing_to_rebuild:
+        typer.echo(f"nothing to rebuild: {file.name} matches {report.lock_file.name}")
         return
+    assert report.result is not None
+    calls = report.calls.get("api_calls", 0)
     if not report.ok:
         _red_report(report)
         raise typer.Exit(1)
+    regenerated = ", ".join(report.regenerated) or "none"
     typer.secho(f"GREEN: {_summary(report.result)} in {report.project_dir}", fg="green")
+    typer.echo(
+        f"regenerated: {regenerated} · repair rounds: {report.loop.rounds if report.loop else 0}"
+        f" · model calls: {calls} · lock: {report.lock_file.name}"
+    )
 
 
 @app.command("test")
