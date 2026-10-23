@@ -120,10 +120,7 @@ def plan_build(
         plan.dirty = {d.slug: reason for d in program.does}
         plan.shared_changed = True
         if lock is not None:
-            current = {_does_key(d.slug) for d in program.does} | {
-                f"thing:{t.name}" for t in program.things
-            }
-            plan.removed = sorted(k for k in lock.blocks if k not in current)
+            plan.removed = _removed(fe, lock)
         return plan
 
     changed, missing = drifted_files(out, lock.all_files())
@@ -152,11 +149,18 @@ def plan_build(
         elif any(f in missing for f in entry.all_files()):
             plan.dirty[does.slug] = "generated files are missing"
 
+    plan.removed = _removed(fe, lock)
+    return plan
+
+
+def _removed(fe: Frontend, lock: Lock) -> list[str]:
+    program = fe.program
     current = {_does_key(d.slug) for d in program.does} | {
         f"thing:{t.name}" for t in program.things
     }
-    plan.removed = sorted(k for k in lock.blocks if k not in current)
-    return plan
+    return sorted(
+        k for k, b in lock.blocks.items() if b.kind in ("thing", "does") and k not in current
+    )
 
 
 def _check_hand_edits(plan: BuildPlan, force: bool) -> None:
@@ -178,6 +182,11 @@ def build(path: Path, llm_factory: LLMFactory, opts: BuildOptions) -> BuildRepor
     proj = scaffold(fe)
     out = opts.out_dir or (lock.resolve_out_dir(lf) if lock else default_out_dir(proj))
 
+    if lock is None and not opts.force and out.exists() and any(out.iterdir()):
+        raise LockError(
+            f"{out} already has files but no {lf.name} manages them (an ejected or hand-made "
+            "project?). Choose another --out, or pass --force to overwrite it."
+        )
     plan = plan_build(fe, proj, lock, out, force=opts.force)
     _check_hand_edits(plan, opts.force)
     report = BuildReport(project_dir=out, package=proj.package, lock_file=lf, plan=plan)
@@ -378,6 +387,20 @@ def _write_lock(
     lock.app_hash = node_hash(program.app)
     lock.shared_hash = shared_context_hash(program)
     lock.shared_files = {rel: h(rel) for rel in [*proj.files, *glue_out]}
+    lock.blocks["app"] = BlockLock(
+        kind="app",
+        source_hash=lock.app_hash,
+        input_hash=lock.app_hash,
+        ast=to_data(program.app, positions=False),
+    )
+    if program.exacts:
+        lock.blocks["exact"] = BlockLock(
+            kind="exact",
+            source_hash=node_hash(program.exacts),
+            input_hash=node_hash(program.exacts),
+            ast=to_data(program.exacts, positions=False),
+            files={k: h(k) for k in proj.files if k.endswith("/exact.py")},
+        )
     models_rel = f"src/{proj.package}/models.py"
     for t in program.things:
         lock.blocks[f"thing:{t.name}"] = BlockLock(

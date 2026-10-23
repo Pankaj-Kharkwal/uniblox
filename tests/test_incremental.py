@@ -44,7 +44,11 @@ def test_first_build_then_nothing_to_rebuild(tmp_path: Path) -> None:
 
     lock = Lock.load(tmp_path / "todo.loom.lock")
     assert lock is not None and lock.out_dir == "out"
-    assert {k: b.status for k, b in lock.blocks.items()} == {
+    assert {k: b.kind for k, b in lock.blocks.items() if b.kind in ("app", "exact")} == {
+        "app": "app",
+        "exact": "exact",
+    }
+    assert {k: b.status for k, b in lock.blocks.items() if b.kind in ("thing", "does")} == {
         "thing:Task": "green",
         "thing:Summary": "green",
         COMPLETE: "green",

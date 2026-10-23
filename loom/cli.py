@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 from pathlib import Path
 from typing import Annotated
@@ -12,9 +13,12 @@ import typer
 from loom import __version__
 from loom.ambiguity import Ambiguity, settle
 from loom.build import BuildOptions, BuildReport, build, default_out_dir
+from loom.diff import diff as intent_diff
+from loom.eject import eject as eject_project
 from loom.errors import LoomError
 from loom.frontend import load
 from loom.llm import ClaudeClient
+from loom.lock import Lock, lock_path
 from loom.nodes import Does
 from loom.render import render_line
 from loom.runner import RunResult, run_pytest
@@ -204,6 +208,112 @@ def test_cmd(file: FileArg, out: OutOpt = None) -> None:
     typer.echo(result.output.rstrip())
     if not result.ok:
         raise typer.Exit(1)
+
+
+@app.command("diff")
+def diff_cmd(
+    file: FileArg,
+    out: OutOpt = None,
+    exit_code: Annotated[
+        bool, typer.Option("--exit-code", help="Exit 1 if anything would regenerate (for CI).")
+    ] = False,
+) -> None:
+    """Show the intent diff against the lock, then which blocks would regenerate."""
+    try:
+        fe = load(file)
+        lf = lock_path(file)
+        report = intent_diff(fe, Lock.load(lf), lf, out)
+    except LoomError as err:
+        _fail(err)
+        return
+    if not report.has_lock:
+        typer.echo(f"No {lf.name} yet: the first build generates every block.\n")
+    elif report.empty:
+        typer.echo(f"No intent changes since the last build: {file.name} matches {lf.name}.")
+        return
+    else:
+        typer.secho("Intent diff", bold=True)
+        if not report.changes:
+            typer.echo("  (no changes to the spec)")
+        current = None
+        for change in report.changes:
+            if change.block != current:
+                typer.echo(f"  {change.block}")
+                current = change.block
+            typer.echo(f"    - {change.sentence}")
+        typer.echo("")
+    typer.secho("Code impact", bold=True)
+    plan = report.plan
+    assert plan is not None
+    if not plan.dirty:
+        typer.echo("  no does block regenerates (no model calls)")
+    for slug, reason in plan.dirty.items():
+        typer.echo(f"  does {slug} regenerates ({reason}):")
+        for rel in report.files.get(slug, []):
+            typer.echo(f"    {rel}")
+    for key in plan.removed:
+        typer.echo(f"  {key.replace(':', ' ', 1)} was removed: its generated files are deleted")
+    if plan.shared_changed and report.has_lock:
+        typer.echo("  shared files (models, runtime, scaffold) are rewritten (no model calls)")
+    if plan.hand_edited:
+        typer.echo("  hand-edited generated files (a build will refuse until --force):")
+        for rel in plan.hand_edited:
+            typer.echo(f"    {rel}")
+    if exit_code:
+        raise typer.Exit(1)
+
+
+@app.command("eject")
+def eject_cmd(
+    file: FileArg,
+    out: OutOpt = None,
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Do not ask for confirmation.")] = False,
+    run_tests: Annotated[
+        bool, typer.Option("--test/--no-test", help="Run the project's tests afterwards.")
+    ] = True,
+) -> None:
+    """Strip Loom metadata and leave a plain Python project (deletes <file>.lock)."""
+    try:
+        fe = load(file)
+    except LoomError as err:
+        _fail(err)
+        return
+    lf = lock_path(file)
+    lock = Lock.load(lf)
+    project = out or (lock.resolve_out_dir(lf) if lock else default_out_dir(project_for(fe)))
+    if not yes:
+        if not _interactive():
+            typer.echo("eject deletes the lockfile and Loom's file headers; pass --yes", err=True)
+            raise typer.Exit(1)
+        typer.confirm(
+            f"Eject {project}? This deletes {lf.name}; later builds will not manage it.",
+            abort=True,
+        )
+    try:
+        report = eject_project(project, lf)
+    except LoomError as err:
+        _fail(err)
+        return
+    typer.echo(
+        f"Ejected {project}: removed headers from {len(report.stripped)} files"
+        + (f", deleted {lf.name}" if report.lock_deleted else "")
+        + (f", removed {len(report.removed)} cache folder(s)" if report.removed else "")
+        + "."
+    )
+    if report.leftovers:
+        typer.echo("These files still mention Loom (your own code?):", err=True)
+        for rel in report.leftovers:
+            typer.echo(f"  {rel}", err=True)
+    else:
+        typer.echo("No Loom references remain.")
+    if run_tests:
+        result = run_pytest(project)
+        for leftover in ("__pycache__", ".hypothesis"):
+            for path in project.rglob(leftover):
+                shutil.rmtree(path, ignore_errors=True)
+        typer.echo(f"pytest: {_summary(result)}")
+        if not result.ok:
+            raise typer.Exit(1)
 
 
 @app.command()
