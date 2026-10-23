@@ -1,0 +1,132 @@
+{
+  "key": "b9f17c236d8f81a80ee1f46c24fe1618",
+  "kind": "example_tests",
+  "label": "does:summarize_tasks",
+  "source": "hand-authored",
+  "model": "claude-sonnet-5-5",
+  "served_model": null,
+  "recorded_at": "2026-10-23T18:39:13+00:00",
+  "usage": null,
+  "request": {
+    "model": "claude-sonnet-5-5",
+    "max_tokens": 32000,
+    "system": [
+      {
+        "type": "text",
+        "text": "You are part of Loom, a compiler that turns plain-language intent into locked, tested Python 3.12.\n\nA Loom file has these parts:\n\n- `app <Name>` and `target:`: the project and its stack (python 3.12, optionally fastapi, sqlite).\n- `thing <Name>`: a data shape. Its fields have already been resolved to concrete Python types,\n  shown to you next to each field. Things compile to Pydantic models (SQLModel tables when the\n  target has a database) without your involvement.\n- `does <description>`: one unit of behavior, written as prose steps. Each does block becomes\n  one Python function whose name is the description in snake_case.\n- `every ...` inside a does block: when the job runs (a schedule), not a step of the logic.\n- `never ...` / `always ...` inside a does block: hard rules. They are numbered R1, R2, ... in\n  order. Rules are never optional and never softened.\n- `~ text` after a step: a soft preference (\"vibe\"). Interpret it freely and sensibly.\n- `# decided: ...`: the recorded answer to an earlier ambiguity. Treat it as a hard constraint,\n  exactly as binding as a rule.\n- `example` with `given` / `expect`: executable examples. They are the contract: the generated\n  code must make every example pass, and every comma-separated `expect` clause is checked.\n- `exact { ... }`: raw Python copied verbatim into the generated project. Nobody rewrites it; it\n  can be imported and called.\n\nThroughout, prefer the most conventional reading of the prose, stay consistent with the examples\nand rules, and never invent requirements the author did not state.\n\n\nYour job right now: translate the examples of ONE does block into a pytest module.\n\nYou see the function's signature but not its body. Test the behavior the examples state, not\nan implementation.\n\nRequirements, all mandatory:\n\n1. Write one test function per example, named `test_e<n>_<few_words>` (for example\n   `test_e1_overdue_invoice_gets_first_reminder`). Each test calls the function under test.\n2. Every `expect` clause is numbered (E1.1, E1.2, ...). Each clause needs at least one check\n   in that example's test: an `assert` statement, or `pytest.raises(RuleViolation)` (from\n   `<package>.runtime`) when the clause expects a rule violation. Report every check in\n   `tests[].clauses` as `{\"clause\": \"E1.2\", \"check\": \"<the statement>\"}`, where the\n   statement is copied exactly, on one line, from your module: the `assert ...` line, or the\n   `pytest.raises(...)` call.\n3. Do not assert anything the example does not state, beyond what is needed to observe it.\n4. Use the fixtures from `tests/conftest.py` as parameters: `now` (a fixed, timezone-aware\n   datetime) and, for database targets, `session`. Express relative times in a `given`\n   (\"3 days ago\", \"2 hours ago\", \"tomorrow\") relative to `now`; for dates, use the time zone\n   the spec or its decisions name, otherwise UTC. Always pass `now=now` to functions that\n   take it.\n5. Build inputs with the generated models. Fill required fields the example does not mention\n   with plausible, fixed values. For database targets, add the objects to `session` and\n   flush before calling the function; to observe changes, read the objects again (or\n   `session.refresh` them) after the call.\n6. Observe queued emails with `queued_emails(...)` from `<package>.outbox`.\n7. No randomness, no sleeping, no network, no files, no mocking of the function under test.\n   Absolute imports only. The module must not mention the compiler or these instructions.\n\nReturn the complete module in `module_source` (no markdown fences) and the clause mapping in\n`tests`.\n"
+      },
+      {
+        "type": "text",
+        "text": "# Project\n\napp TodoList\ntarget: python 3.12\n\n# Things (data shapes) with their resolved Python types\n\nthing Task\n  title: text                              -> str\n  priority: one of low, normal, high = normal -> TaskPriority\n  status: one of open, done = open         -> TaskStatus\n  due: date?                               -> Optional[date]\n  completed_at: datetime?                  -> Optional[datetime]\n\nthing Summary\n  open: number = 0                         -> int\n  done: number = 0                         -> int\n  overdue: number = 0                      -> int\n\n# Top-level exact helpers (verbatim Python, importable from the `exact` module)\n\nexact {\n  def normalize_title(title: str) -> str:\n      return \" \".join(title.split()).casefold()\n}\n\n# Generated project\n\nPython package `todo_list` (src layout). Use absolute imports, for example `from todo_list.models import ...`.\n\n## todo_list.models (generated from the things; never redefine them)\n\n```python\nfrom __future__ import annotations\n\nfrom datetime import date, datetime\nfrom enum import StrEnum\nfrom typing import Optional\n\nfrom pydantic import BaseModel, ConfigDict\n\n# Currency of every money field, as written in the spec.\nCURRENCIES: dict[str, str] = {}\n\n\nclass TaskPriority(StrEnum):\n    LOW = 'low'\n    NORMAL = 'normal'\n    HIGH = 'high'\n\n\nclass TaskStatus(StrEnum):\n    OPEN = 'open'\n    DONE = 'done'\n\n\nclass Task(BaseModel):\n    model_config = ConfigDict(validate_assignment=True)\n\n    title: str\n    priority: TaskPriority = TaskPriority.NORMAL\n    status: TaskStatus = TaskStatus.OPEN\n    due: Optional[date] = None\n    completed_at: Optional[datetime] = None\n\n\nclass Summary(BaseModel):\n    model_config = ConfigDict(validate_assignment=True)\n\n    open: int = 0\n    done: int = 0\n    overdue: int = 0\n```\n\n## todo_list.runtime\n- `guard(condition, rule_id, detail=\"\")`: raise `RuleViolation` when `condition` is falsy.\n- `RuleViolation`: subclass of `AssertionError`; has `.rule_id` and `.rule` (the rule text).\n- `utcnow()`: the current time as an aware UTC datetime.\n\n## todo_list.outbox (in memory: emails are queued, never sent)\n- `Outbox()`: holds `emails: list[OutboxEmail]`; `.queue_email(*, to, subject, body, now,\n  ref=\"\")` appends one; `.queued_emails(*, to=None)` lists them.\n\n## todo_list.exact: the top-level exact helpers above, importable from here\n\n## Test fixtures (tests/conftest.py)\n- `now`: a fixed, timezone-aware datetime, 2026-03-11T04:30:00+00:00, which is Wednesday\n  2026-03-11 10:00 in Asia/Kolkata.\n- Hypothesis runs derandomized with 50 examples per test, no deadline, and function-scoped\n  fixtures allowed.\n\n## Allowed imports\nThe Python standard library (except os, sys, subprocess, socket, shutil, pathlib, importlib,\nthreading, multiprocessing, urllib, http, pickle and builtins), pydantic, sqlmodel,\nsqlalchemy, the package itself, and in tests also pytest and hypothesis.\n",
+        "cache_control": {
+          "type": "ephemeral"
+        }
+      }
+    ],
+    "messages": [
+      {
+        "role": "user",
+        "content": "Function under test: `from todo_list.summarize_tasks import summarize_tasks`\nSignature: `def summarize_tasks(tasks: list[Task], *, now: datetime | None=None) -> Summary`\nTarget has a database: no\n\nThe does block it implements:\n\ndoes summarize tasks\n  [L0] count the open and done tasks ~ a single pass over the list is plenty\n  [L1] a task is overdue when it is open and its due date is before today\n    # decided: an open task with no due date is never overdue\n  [L2] return a Summary\n  [L3] (R1) always count each task exactly once as open or done\n\nExamples to translate, with numbered expect clauses:\n\nE1\n  given an open task due tomorrow, an open task due yesterday, a done task due yesterday\n  E1.1: expect open 2\n  E1.2: expect done 1\n  E1.3: expect overdue 1\n\nE2\n  given no tasks\n  E2.1: expect open 0\n  E2.2: expect done 0\n  E2.3: expect overdue 0\n\nWrite the test module.\n"
+      }
+    ],
+    "output_config": {
+      "effort": "low",
+      "format": {
+        "type": "json_schema",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "module_source": {
+              "type": "string"
+            },
+            "tests": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "example": {
+                    "type": "string"
+                  },
+                  "function": {
+                    "type": "string"
+                  },
+                  "clauses": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "clause": {
+                          "type": "string"
+                        },
+                        "check": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "clause",
+                        "check"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "example",
+                  "function",
+                  "clauses"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "module_source",
+            "tests"
+          ],
+          "additionalProperties": false
+        }
+      }
+    }
+  },
+  "output": {
+    "module_source": "from datetime import datetime, timedelta\n\nfrom todo_list.models import Task, TaskStatus\nfrom todo_list.summarize_tasks import summarize_tasks\n\n\ndef test_e1_counts_open_done_and_overdue(now: datetime) -> None:\n    today = now.date()\n    tasks = [\n        Task(title=\"due tomorrow\", status=TaskStatus.OPEN, due=today + timedelta(days=1)),\n        Task(title=\"due yesterday\", status=TaskStatus.OPEN, due=today - timedelta(days=1)),\n        Task(title=\"done yesterday\", status=TaskStatus.DONE, due=today - timedelta(days=1)),\n    ]\n\n    summary = summarize_tasks(tasks, now=now)\n\n    assert summary.open == 2\n    assert summary.done == 1\n    assert summary.overdue == 1\n\n\ndef test_e2_no_tasks_gives_zero_counts(now: datetime) -> None:\n    summary = summarize_tasks([], now=now)\n\n    assert summary.open == 0\n    assert summary.done == 0\n    assert summary.overdue == 0\n",
+    "tests": [
+      {
+        "example": "E1",
+        "function": "test_e1_counts_open_done_and_overdue",
+        "clauses": [
+          {
+            "clause": "E1.1",
+            "check": "assert summary.open == 2"
+          },
+          {
+            "clause": "E1.2",
+            "check": "assert summary.done == 1"
+          },
+          {
+            "clause": "E1.3",
+            "check": "assert summary.overdue == 1"
+          }
+        ]
+      },
+      {
+        "example": "E2",
+        "function": "test_e2_no_tasks_gives_zero_counts",
+        "clauses": [
+          {
+            "clause": "E2.1",
+            "check": "assert summary.open == 0"
+          },
+          {
+            "clause": "E2.2",
+            "check": "assert summary.done == 0"
+          },
+          {
+            "clause": "E2.3",
+            "check": "assert summary.overdue == 0"
+          }
+        ]
+      }
+    ]
+  }
+}

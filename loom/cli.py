@@ -11,11 +11,14 @@ import typer
 
 from loom import __version__
 from loom.ambiguity import Ambiguity, settle
+from loom.build import BuildOptions, BuildReport, build, default_out_dir
 from loom.errors import LoomError
 from loom.frontend import load
 from loom.llm import ClaudeClient
 from loom.nodes import Does
 from loom.render import render_line
+from loom.runner import RunResult, run_pytest
+from loom.scaffold import project_for
 
 app = typer.Typer(
     add_completion=False,
@@ -94,6 +97,90 @@ def check(
         f"ok: app {program.app.name}: {len(things)} things, {len(program.does)} does blocks, "
         f"{n_rules} rules, {n_examples} examples"
     )
+
+
+OutOpt = Annotated[
+    Path | None,
+    typer.Option("--out", help="Output directory (default: ./out/<app_name>)."),
+]
+
+
+def _summary(result: RunResult) -> str:
+    counts = result.counts()
+    parts = [f"{counts.get(k, 0)} {k}" for k in ("passed", "failed", "error") if counts.get(k)]
+    return ", ".join(parts) or "no tests ran"
+
+
+def _red_report(report: BuildReport) -> None:
+    result = report.result
+    assert result is not None
+    typer.secho("RED: the generated tests do not pass", fg="red", bold=True, err=True)
+    by_block: dict[str, list[str]] = {}
+    for case in result.failures:
+        by_block.setdefault(case.block or case.file, []).append(
+            f"{case.name}: {case.message.splitlines()[0] if case.message else case.outcome}"
+        )
+    for block, lines in sorted(by_block.items()):
+        typer.echo(f"  does {block}:", err=True)
+        for line in lines:
+            typer.echo(f"    - {line}", err=True)
+    if not by_block:
+        typer.echo(result.output[-3000:], err=True)
+
+
+@app.command("build")
+def build_cmd(
+    file: FileArg,
+    yes: YesOpt = False,
+    model: ModelOpt = None,
+    max_iters: Annotated[
+        int, typer.Option("--max-iters", min=1, help="Repair attempts per failing block.")
+    ] = 4,
+    force: Annotated[
+        bool, typer.Option("--force", help="Rebuild every block, overwriting hand edits.")
+    ] = False,
+    out: OutOpt = None,
+) -> None:
+    """Compile a .loom file into a tested Python project and write <file>.lock."""
+    llm = ClaudeClient.from_env(model)
+    opts = BuildOptions(
+        out_dir=out,
+        yes=yes,
+        ask=_ask if _interactive() else None,
+        max_iters=max_iters,
+        force=force,
+        echo=typer.echo,
+    )
+    try:
+        report = build(file, llm, opts)
+    except LoomError as err:
+        _fail(err)
+        return
+    if report.result is None:
+        typer.echo("nothing to rebuild")
+        return
+    if not report.ok:
+        _red_report(report)
+        raise typer.Exit(1)
+    typer.secho(f"GREEN: {_summary(report.result)} in {report.project_dir}", fg="green")
+
+
+@app.command("test")
+def test_cmd(file: FileArg, out: OutOpt = None) -> None:
+    """Run the generated project's pytest suite (no code generation)."""
+    try:
+        fe = load(file)
+    except LoomError as err:
+        _fail(err)
+        return
+    project = out or default_out_dir(project_for(fe))
+    if not (project / "tests").is_dir():
+        typer.echo(f"no generated project at {project}; run `loom build {file}` first", err=True)
+        raise typer.Exit(1)
+    result = run_pytest(project)
+    typer.echo(result.output.rstrip())
+    if not result.ok:
+        raise typer.Exit(1)
 
 
 @app.command()

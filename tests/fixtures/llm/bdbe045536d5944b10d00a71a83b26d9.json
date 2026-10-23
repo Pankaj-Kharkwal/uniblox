@@ -1,0 +1,84 @@
+{
+  "key": "bdbe045536d5944b10d00a71a83b26d9",
+  "kind": "rule_tests",
+  "label": "does:complete_task",
+  "source": "hand-authored",
+  "model": "claude-sonnet-5-5",
+  "served_model": null,
+  "recorded_at": "2026-10-23T18:39:03+00:00",
+  "usage": null,
+  "request": {
+    "model": "claude-sonnet-5-5",
+    "max_tokens": 32000,
+    "system": [
+      {
+        "type": "text",
+        "text": "You are part of Loom, a compiler that turns plain-language intent into locked, tested Python 3.12.\n\nA Loom file has these parts:\n\n- `app <Name>` and `target:`: the project and its stack (python 3.12, optionally fastapi, sqlite).\n- `thing <Name>`: a data shape. Its fields have already been resolved to concrete Python types,\n  shown to you next to each field. Things compile to Pydantic models (SQLModel tables when the\n  target has a database) without your involvement.\n- `does <description>`: one unit of behavior, written as prose steps. Each does block becomes\n  one Python function whose name is the description in snake_case.\n- `every ...` inside a does block: when the job runs (a schedule), not a step of the logic.\n- `never ...` / `always ...` inside a does block: hard rules. They are numbered R1, R2, ... in\n  order. Rules are never optional and never softened.\n- `~ text` after a step: a soft preference (\"vibe\"). Interpret it freely and sensibly.\n- `# decided: ...`: the recorded answer to an earlier ambiguity. Treat it as a hard constraint,\n  exactly as binding as a rule.\n- `example` with `given` / `expect`: executable examples. They are the contract: the generated\n  code must make every example pass, and every comma-separated `expect` clause is checked.\n- `exact { ... }`: raw Python copied verbatim into the generated project. Nobody rewrites it; it\n  can be imported and called.\n\nThroughout, prefer the most conventional reading of the prose, stay consistent with the examples\nand rules, and never invent requirements the author did not state.\n\n\nYour job right now: turn the never/always rules of ONE does block into pytest tests.\n\nYou see the function's signature but not its body. Each rule must hold for every input the\nfunction accepts, so test it through the public function, as a property where possible.\n\nRequirements, all mandatory:\n\n1. For every rule (R1, R2, ...) write at least one test named `test_r<n>_<few_words>` that\n   calls the function under test and asserts the rule. Report each in `tests` as\n   `{\"rule\": \"R1\", \"function\": \"<test function name>\"}`.\n2. Prefer property-based tests with Hypothesis when the rule ranges over an input space\n   (times, counts, statuses, list contents): use `@given(...)` with small, bounded strategies\n   (`st.sampled_from`, `st.integers(min_value=..., max_value=...)`, `st.timedeltas` with\n   bounds, short lists). Otherwise write focused scenario tests around the rule's boundary.\n3. A rule that forbids an input (for example \"never complete a task that is already done\")\n   is checked with `pytest.raises(RuleViolation)` (from `<package>.runtime`). A rule that\n   constrains what the function does (for example \"never email a client twice in 24h\") is\n   checked by asserting on the outcome; it must not raise for valid inputs.\n4. The `now` fixture is a fixed, timezone-aware datetime; always pass `now=now` to functions\n   that take it. For database targets, tests decorated with `@given` must not use the\n   `session` fixture: open a fresh database per example with\n   `with memory_session() as session:` (from `<package>.db`). Plain tests may use the\n   `session` fixture.\n5. Build inputs with the generated models, filling unrelated required fields with plausible\n   fixed values. Observe queued emails with `queued_emails(...)` from `<package>.outbox`.\n6. No network, no files, no sleeping, no mocking of the function under test. Absolute imports\n   only. The module must not mention the compiler or these instructions.\n\nReturn the complete module in `module_source` (no markdown fences) and the rule mapping in\n`tests`.\n"
+      },
+      {
+        "type": "text",
+        "text": "# Project\n\napp TodoList\ntarget: python 3.12\n\n# Things (data shapes) with their resolved Python types\n\nthing Task\n  title: text                              -> str\n  priority: one of low, normal, high = normal -> TaskPriority\n  status: one of open, done = open         -> TaskStatus\n  due: date?                               -> Optional[date]\n  completed_at: datetime?                  -> Optional[datetime]\n\nthing Summary\n  open: number = 0                         -> int\n  done: number = 0                         -> int\n  overdue: number = 0                      -> int\n\n# Top-level exact helpers (verbatim Python, importable from the `exact` module)\n\nexact {\n  def normalize_title(title: str) -> str:\n      return \" \".join(title.split()).casefold()\n}\n\n# Generated project\n\nPython package `todo_list` (src layout). Use absolute imports, for example `from todo_list.models import ...`.\n\n## todo_list.models (generated from the things; never redefine them)\n\n```python\nfrom __future__ import annotations\n\nfrom datetime import date, datetime\nfrom enum import StrEnum\nfrom typing import Optional\n\nfrom pydantic import BaseModel, ConfigDict\n\n# Currency of every money field, as written in the spec.\nCURRENCIES: dict[str, str] = {}\n\n\nclass TaskPriority(StrEnum):\n    LOW = 'low'\n    NORMAL = 'normal'\n    HIGH = 'high'\n\n\nclass TaskStatus(StrEnum):\n    OPEN = 'open'\n    DONE = 'done'\n\n\nclass Task(BaseModel):\n    model_config = ConfigDict(validate_assignment=True)\n\n    title: str\n    priority: TaskPriority = TaskPriority.NORMAL\n    status: TaskStatus = TaskStatus.OPEN\n    due: Optional[date] = None\n    completed_at: Optional[datetime] = None\n\n\nclass Summary(BaseModel):\n    model_config = ConfigDict(validate_assignment=True)\n\n    open: int = 0\n    done: int = 0\n    overdue: int = 0\n```\n\n## todo_list.runtime\n- `guard(condition, rule_id, detail=\"\")`: raise `RuleViolation` when `condition` is falsy.\n- `RuleViolation`: subclass of `AssertionError`; has `.rule_id` and `.rule` (the rule text).\n- `utcnow()`: the current time as an aware UTC datetime.\n\n## todo_list.outbox (in memory: emails are queued, never sent)\n- `Outbox()`: holds `emails: list[OutboxEmail]`; `.queue_email(*, to, subject, body, now,\n  ref=\"\")` appends one; `.queued_emails(*, to=None)` lists them.\n\n## todo_list.exact: the top-level exact helpers above, importable from here\n\n## Test fixtures (tests/conftest.py)\n- `now`: a fixed, timezone-aware datetime, 2026-03-11T04:30:00+00:00, which is Wednesday\n  2026-03-11 10:00 in Asia/Kolkata.\n- Hypothesis runs derandomized with 50 examples per test, no deadline, and function-scoped\n  fixtures allowed.\n\n## Allowed imports\nThe Python standard library (except os, sys, subprocess, socket, shutil, pathlib, importlib,\nthreading, multiprocessing, urllib, http, pickle and builtins), pydantic, sqlmodel,\nsqlalchemy, the package itself, and in tests also pytest and hypothesis.\n",
+        "cache_control": {
+          "type": "ephemeral"
+        }
+      }
+    ],
+    "messages": [
+      {
+        "role": "user",
+        "content": "Function under test: `from todo_list.complete_task import complete_task`\nSignature: `def complete_task(tasks: list[Task], title: str, *, now: datetime | None=None) -> Task`\nTarget has a database: no\n\nThe does block it implements:\n\ndoes complete task\n  [L0] find the task in the list whose title matches the given title, compared with normalize_title\n    # decided: if no task matches, raise LookupError; if several match, complete the first one in list order\n  [L1] set its status to done and completed_at to now\n  [L2] return the updated task\n    # decided: the matching task is updated in place in the given list and that same object is returned\n  [L3] (R1) never complete a task that is already done\n  [L4] (R2) always leave the other tasks in the list unchanged\n\nRules to test:\n- R1 (guard id complete_task:R1): never complete a task that is already done\n- R2 (guard id complete_task:R2): always leave the other tasks in the list unchanged\n\nWrite the test module.\n"
+      }
+    ],
+    "output_config": {
+      "effort": "low",
+      "format": {
+        "type": "json_schema",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "module_source": {
+              "type": "string"
+            },
+            "tests": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "rule": {
+                    "type": "string"
+                  },
+                  "function": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "rule",
+                  "function"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "module_source",
+            "tests"
+          ],
+          "additionalProperties": false
+        }
+      }
+    }
+  },
+  "output": {
+    "module_source": "from datetime import date, datetime\n\nimport pytest\nfrom hypothesis import given\nfrom hypothesis import strategies as st\n\nfrom todo_list.complete_task import complete_task\nfrom todo_list.models import Task, TaskPriority, TaskStatus\nfrom todo_list.runtime import RuleViolation\n\ntitles = st.text(alphabet=\"abcdefghij \", min_size=1, max_size=12).filter(lambda s: s.strip())\nother_tasks = st.lists(\n    st.builds(\n        Task,\n        title=titles.map(lambda s: \"other \" + s),\n        priority=st.sampled_from(list(TaskPriority)),\n        status=st.sampled_from(list(TaskStatus)),\n        due=st.none() | st.dates(min_value=date(2026, 1, 1), max_value=date(2026, 12, 31)),\n    ),\n    max_size=5,\n)\n\n\n@given(title=titles, priority=st.sampled_from(list(TaskPriority)))\ndef test_r1_a_done_task_is_never_completed_again(\n    now: datetime, title: str, priority: TaskPriority\n) -> None:\n    done_at = datetime(2026, 3, 1, 9, 0, tzinfo=now.tzinfo)\n    task = Task(title=title, priority=priority, status=TaskStatus.DONE, completed_at=done_at)\n\n    with pytest.raises(RuleViolation):\n        complete_task([task], title, now=now)\n\n    assert task.status == TaskStatus.DONE\n    assert task.completed_at == done_at\n\n\n@given(before=other_tasks, after=other_tasks)\ndef test_r2_the_other_tasks_are_left_unchanged(\n    now: datetime, before: list[Task], after: list[Task]\n) -> None:\n    target = Task(title=\"the target\", status=TaskStatus.OPEN)\n    tasks = [*before, target, *after]\n    snapshot = [t.model_dump() for t in tasks if t is not target]\n\n    complete_task(tasks, \"the target\", now=now)\n\n    assert [t.model_dump() for t in tasks if t is not target] == snapshot\n    assert target.status == TaskStatus.DONE\n",
+    "tests": [
+      {
+        "rule": "R1",
+        "function": "test_r1_a_done_task_is_never_completed_again"
+      },
+      {
+        "rule": "R2",
+        "function": "test_r2_the_other_tasks_are_left_unchanged"
+      }
+    ]
+  }
+}
