@@ -1,0 +1,85 @@
+// Loom v0 grammar (Lark, LALR + contextual lexer + indentation postlexer).
+//
+// Loom is line-oriented: a block header at column 0, then an indented body. Lines inside a
+// `does` block are prose, so PROSE is a whole-line terminal; keywords that start a line
+// (every / never / always / given / expect) are higher-priority regex terminals with a word
+// boundary, so `everyone ...` is still prose. `#` starts a comment unless it is a
+// `# decided:` line, which is semantic. `exact { ... }` bodies are cut out by a pre-pass in
+// parser.py and reach this grammar as a single EXACT_REF token.
+
+start: _NL? app (block)*
+
+app: "app" NAME _NL "target" ":" TARGET _NL
+
+?block: thing
+      | does
+      | example
+      | top_exact
+
+top_exact: EXACT_REF _NL
+
+// --- things -------------------------------------------------------------------------------
+
+thing: "thing" NAME _NL _INDENT field+ _DEDENT
+
+field: NAME ":" type_expr ("=" DEFAULT)? _NL
+
+?type_expr: simple_type
+          | one_of
+
+simple_type: NAME type_arg? OPTIONAL?
+type_arg: "(" NAME ")"
+one_of: ONE OF NAME ("," NAME)*
+
+// --- does ---------------------------------------------------------------------------------
+
+does: "does" PROSE _NL _INDENT decided_lines? does_line+ _DEDENT
+
+?does_line: trigger
+          | rule
+          | step
+          | inner_exact
+
+trigger: EVERY PROSE _NL decisions?
+rule: (NEVER | ALWAYS) PROSE _NL decisions?
+step: PROSE soft? _NL decisions?
+soft: "~" PROSE
+inner_exact: EXACT_REF _NL
+
+// `# decided:` lines either sit one level deeper under the line they answer (what the
+// compiler writes) or directly below it at the same level (forgiving for hand edits).
+?decisions: decided_block
+          | decided_lines
+decided_block: _INDENT decided_lines _DEDENT
+decided_lines: (DECIDED _NL)+
+
+// --- examples -----------------------------------------------------------------------------
+
+example: "example" (FOR PROSE)? _NL _INDENT given expect+ _DEDENT
+given: GIVEN PROSE _NL
+expect: EXPECT PROSE _NL
+
+// --- terminals ----------------------------------------------------------------------------
+
+NAME: /[A-Za-z_][A-Za-z0-9_]*/
+TARGET: /[^\s#][^\n#]*/
+DEFAULT: /[^\s#][^\n#]*/
+OPTIONAL: "?"
+ONE.3: /one\b/
+OF.3: /of\b/
+EVERY.3: /every\b/
+NEVER.3: /never\b/
+ALWAYS.3: /always\b/
+GIVEN.3: /given\b/
+EXPECT.3: /expect\b/
+FOR.3: /for\b/
+EXACT_REF.4: /exact@\d+/
+PROSE: /[^\s~#][^\n~#]*/
+DECIDED.4: /#[ \t]*decided:[^\n]*/
+
+COMMENT: /#(?![ \t]*decided:)[^\n]*/
+_NL: (/\r?\n[\t ]*/ | COMMENT)+
+
+%import common.WS_INLINE
+%ignore WS_INLINE
+%declare _INDENT _DEDENT

@@ -1,0 +1,341 @@
+{
+  "node": "Program",
+  "app": {
+    "node": "App",
+    "name": "InvoiceChaser",
+    "target": {
+      "node": "Target",
+      "language": "python",
+      "version": "3.12",
+      "frameworks": [
+        "fastapi"
+      ],
+      "database": "sqlite",
+      "pos": {
+        "node": "Pos",
+        "line": 2,
+        "column": 9
+      }
+    },
+    "pos": {
+      "node": "Pos",
+      "line": 1,
+      "column": 1
+    }
+  },
+  "things": [
+    {
+      "node": "Thing",
+      "name": "Invoice",
+      "fields": [
+        {
+          "node": "Field",
+          "name": "client",
+          "type": {
+            "node": "TypeRef",
+            "base": "text",
+            "arg": null,
+            "options": [],
+            "optional": false,
+            "pos": {
+              "node": "Pos",
+              "line": 5,
+              "column": 11
+            }
+          },
+          "default": null,
+          "pos": {
+            "node": "Pos",
+            "line": 5,
+            "column": 3
+          }
+        },
+        {
+          "node": "Field",
+          "name": "client_email",
+          "type": {
+            "node": "TypeRef",
+            "base": "email",
+            "arg": null,
+            "options": [],
+            "optional": false,
+            "pos": {
+              "node": "Pos",
+              "line": 6,
+              "column": 17
+            }
+          },
+          "default": null,
+          "pos": {
+            "node": "Pos",
+            "line": 6,
+            "column": 3
+          }
+        },
+        {
+          "node": "Field",
+          "name": "amount",
+          "type": {
+            "node": "TypeRef",
+            "base": "money",
+            "arg": "INR",
+            "options": [],
+            "optional": false,
+            "pos": {
+              "node": "Pos",
+              "line": 7,
+              "column": 11
+            }
+          },
+          "default": null,
+          "pos": {
+            "node": "Pos",
+            "line": 7,
+            "column": 3
+          }
+        },
+        {
+          "node": "Field",
+          "name": "due",
+          "type": {
+            "node": "TypeRef",
+            "base": "date",
+            "arg": null,
+            "options": [],
+            "optional": false,
+            "pos": {
+              "node": "Pos",
+              "line": 8,
+              "column": 8
+            }
+          },
+          "default": null,
+          "pos": {
+            "node": "Pos",
+            "line": 8,
+            "column": 3
+          }
+        },
+        {
+          "node": "Field",
+          "name": "status",
+          "type": {
+            "node": "TypeRef",
+            "base": "one of",
+            "arg": null,
+            "options": [
+              "draft",
+              "sent",
+              "paid",
+              "overdue"
+            ],
+            "optional": false,
+            "pos": {
+              "node": "Pos",
+              "line": 9,
+              "column": 11
+            }
+          },
+          "default": null,
+          "pos": {
+            "node": "Pos",
+            "line": 9,
+            "column": 3
+          }
+        },
+        {
+          "node": "Field",
+          "name": "reminders_sent",
+          "type": {
+            "node": "TypeRef",
+            "base": "number",
+            "arg": null,
+            "options": [],
+            "optional": false,
+            "pos": {
+              "node": "Pos",
+              "line": 10,
+              "column": 19
+            }
+          },
+          "default": "0",
+          "pos": {
+            "node": "Pos",
+            "line": 10,
+            "column": 3
+          }
+        },
+        {
+          "node": "Field",
+          "name": "last_reminded_at",
+          "type": {
+            "node": "TypeRef",
+            "base": "datetime",
+            "arg": null,
+            "options": [],
+            "optional": true,
+            "pos": {
+              "node": "Pos",
+              "line": 11,
+              "column": 21
+            }
+          },
+          "default": null,
+          "pos": {
+            "node": "Pos",
+            "line": 11,
+            "column": 3
+          }
+        }
+      ],
+      "pos": {
+        "node": "Pos",
+        "line": 4,
+        "column": 1
+      }
+    }
+  ],
+  "does": [
+    {
+      "node": "Does",
+      "description": "chase overdue invoices",
+      "lines": [
+        {
+          "node": "Trigger",
+          "text": "weekday at 10:00 IST",
+          "decided": [],
+          "pos": {
+            "node": "Pos",
+            "line": 14,
+            "column": 3
+          }
+        },
+        {
+          "node": "Step",
+          "text": "find invoices where due < today and status = sent or overdue",
+          "soft": null,
+          "decided": [],
+          "pos": {
+            "node": "Pos",
+            "line": 15,
+            "column": 3
+          }
+        },
+        {
+          "node": "Step",
+          "text": "mark them overdue",
+          "soft": null,
+          "decided": [],
+          "pos": {
+            "node": "Pos",
+            "line": 16,
+            "column": 3
+          }
+        },
+        {
+          "node": "Step",
+          "text": "queue a reminder email to the client",
+          "soft": {
+            "node": "Soft",
+            "text": "polite first, firmer after 2nd reminder",
+            "pos": {
+              "node": "Pos",
+              "line": 17,
+              "column": 42
+            }
+          },
+          "decided": [],
+          "pos": {
+            "node": "Pos",
+            "line": 17,
+            "column": 3
+          }
+        },
+        {
+          "node": "Step",
+          "text": "increment reminders_sent and set last_reminded_at",
+          "soft": null,
+          "decided": [],
+          "pos": {
+            "node": "Pos",
+            "line": 18,
+            "column": 3
+          }
+        },
+        {
+          "node": "Rule",
+          "kind": "never",
+          "text": "email the same client twice in 24h",
+          "decided": [],
+          "pos": {
+            "node": "Pos",
+            "line": 19,
+            "column": 3
+          }
+        },
+        {
+          "node": "Rule",
+          "kind": "always",
+          "text": "skip invoices with status paid",
+          "decided": [],
+          "pos": {
+            "node": "Pos",
+            "line": 20,
+            "column": 3
+          }
+        }
+      ],
+      "decided": [],
+      "examples": [
+        {
+          "node": "Example",
+          "given": "invoice due 3 days ago, status sent, reminders_sent 0",
+          "expect": [
+            "status overdue",
+            "1 email queued",
+            "reminders_sent 1"
+          ],
+          "target": null,
+          "pos": {
+            "node": "Pos",
+            "line": 22,
+            "column": 1
+          }
+        },
+        {
+          "node": "Example",
+          "given": "invoice due 3 days ago, status overdue, last_reminded_at 2 hours ago",
+          "expect": [
+            "0 emails queued"
+          ],
+          "target": null,
+          "pos": {
+            "node": "Pos",
+            "line": 26,
+            "column": 1
+          }
+        },
+        {
+          "node": "Example",
+          "given": "invoice due 10 days ago, status paid",
+          "expect": [
+            "status paid",
+            "0 emails queued"
+          ],
+          "target": null,
+          "pos": {
+            "node": "Pos",
+            "line": 30,
+            "column": 1
+          }
+        }
+      ],
+      "pos": {
+        "node": "Pos",
+        "line": 13,
+        "column": 1
+      }
+    }
+  ],
+  "exacts": []
+}

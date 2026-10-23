@@ -1,0 +1,438 @@
+{
+  "node": "Program",
+  "app": {
+    "node": "App",
+    "name": "TodoList",
+    "target": {
+      "node": "Target",
+      "language": "python",
+      "version": "3.12",
+      "frameworks": [],
+      "database": null,
+      "pos": {
+        "node": "Pos",
+        "line": 2,
+        "column": 9
+      }
+    },
+    "pos": {
+      "node": "Pos",
+      "line": 1,
+      "column": 1
+    }
+  },
+  "things": [
+    {
+      "node": "Thing",
+      "name": "Task",
+      "fields": [
+        {
+          "node": "Field",
+          "name": "title",
+          "type": {
+            "node": "TypeRef",
+            "base": "text",
+            "arg": null,
+            "options": [],
+            "optional": false,
+            "pos": {
+              "node": "Pos",
+              "line": 7,
+              "column": 10
+            }
+          },
+          "default": null,
+          "pos": {
+            "node": "Pos",
+            "line": 7,
+            "column": 3
+          }
+        },
+        {
+          "node": "Field",
+          "name": "priority",
+          "type": {
+            "node": "TypeRef",
+            "base": "one of",
+            "arg": null,
+            "options": [
+              "low",
+              "normal",
+              "high"
+            ],
+            "optional": false,
+            "pos": {
+              "node": "Pos",
+              "line": 8,
+              "column": 13
+            }
+          },
+          "default": "normal",
+          "pos": {
+            "node": "Pos",
+            "line": 8,
+            "column": 3
+          }
+        },
+        {
+          "node": "Field",
+          "name": "status",
+          "type": {
+            "node": "TypeRef",
+            "base": "one of",
+            "arg": null,
+            "options": [
+              "open",
+              "done"
+            ],
+            "optional": false,
+            "pos": {
+              "node": "Pos",
+              "line": 9,
+              "column": 11
+            }
+          },
+          "default": "open",
+          "pos": {
+            "node": "Pos",
+            "line": 9,
+            "column": 3
+          }
+        },
+        {
+          "node": "Field",
+          "name": "due",
+          "type": {
+            "node": "TypeRef",
+            "base": "date",
+            "arg": null,
+            "options": [],
+            "optional": true,
+            "pos": {
+              "node": "Pos",
+              "line": 10,
+              "column": 8
+            }
+          },
+          "default": null,
+          "pos": {
+            "node": "Pos",
+            "line": 10,
+            "column": 3
+          }
+        },
+        {
+          "node": "Field",
+          "name": "completed_at",
+          "type": {
+            "node": "TypeRef",
+            "base": "datetime",
+            "arg": null,
+            "options": [],
+            "optional": true,
+            "pos": {
+              "node": "Pos",
+              "line": 11,
+              "column": 17
+            }
+          },
+          "default": null,
+          "pos": {
+            "node": "Pos",
+            "line": 11,
+            "column": 3
+          }
+        }
+      ],
+      "pos": {
+        "node": "Pos",
+        "line": 6,
+        "column": 1
+      }
+    },
+    {
+      "node": "Thing",
+      "name": "Summary",
+      "fields": [
+        {
+          "node": "Field",
+          "name": "open",
+          "type": {
+            "node": "TypeRef",
+            "base": "number",
+            "arg": null,
+            "options": [],
+            "optional": false,
+            "pos": {
+              "node": "Pos",
+              "line": 14,
+              "column": 9
+            }
+          },
+          "default": "0",
+          "pos": {
+            "node": "Pos",
+            "line": 14,
+            "column": 3
+          }
+        },
+        {
+          "node": "Field",
+          "name": "done",
+          "type": {
+            "node": "TypeRef",
+            "base": "number",
+            "arg": null,
+            "options": [],
+            "optional": false,
+            "pos": {
+              "node": "Pos",
+              "line": 15,
+              "column": 9
+            }
+          },
+          "default": "0",
+          "pos": {
+            "node": "Pos",
+            "line": 15,
+            "column": 3
+          }
+        },
+        {
+          "node": "Field",
+          "name": "overdue",
+          "type": {
+            "node": "TypeRef",
+            "base": "number",
+            "arg": null,
+            "options": [],
+            "optional": false,
+            "pos": {
+              "node": "Pos",
+              "line": 16,
+              "column": 12
+            }
+          },
+          "default": "0",
+          "pos": {
+            "node": "Pos",
+            "line": 16,
+            "column": 3
+          }
+        }
+      ],
+      "pos": {
+        "node": "Pos",
+        "line": 13,
+        "column": 1
+      }
+    }
+  ],
+  "does": [
+    {
+      "node": "Does",
+      "description": "complete task",
+      "lines": [
+        {
+          "node": "Step",
+          "text": "find the task in the list whose title matches the given title, compared with normalize_title",
+          "soft": null,
+          "decided": [],
+          "pos": {
+            "node": "Pos",
+            "line": 24,
+            "column": 3
+          }
+        },
+        {
+          "node": "Step",
+          "text": "set its status to done and completed_at to now",
+          "soft": null,
+          "decided": [],
+          "pos": {
+            "node": "Pos",
+            "line": 25,
+            "column": 3
+          }
+        },
+        {
+          "node": "Step",
+          "text": "return the updated task",
+          "soft": null,
+          "decided": [],
+          "pos": {
+            "node": "Pos",
+            "line": 26,
+            "column": 3
+          }
+        },
+        {
+          "node": "Rule",
+          "kind": "never",
+          "text": "complete a task that is already done",
+          "decided": [],
+          "pos": {
+            "node": "Pos",
+            "line": 27,
+            "column": 3
+          }
+        },
+        {
+          "node": "Rule",
+          "kind": "always",
+          "text": "leave the other tasks in the list unchanged",
+          "decided": [],
+          "pos": {
+            "node": "Pos",
+            "line": 28,
+            "column": 3
+          }
+        }
+      ],
+      "decided": [],
+      "examples": [
+        {
+          "node": "Example",
+          "given": "tasks \"buy milk\" open and \"pay rent\" open, complete \"BUY MILK\"",
+          "expect": [
+            "\"buy milk\" status done",
+            "completed_at set",
+            "\"pay rent\" status open"
+          ],
+          "target": null,
+          "pos": {
+            "node": "Pos",
+            "line": 30,
+            "column": 1
+          }
+        },
+        {
+          "node": "Example",
+          "given": "task \"buy milk\" with status done, complete \"buy milk\"",
+          "expect": [
+            "a rule violation",
+            "\"buy milk\" still done"
+          ],
+          "target": null,
+          "pos": {
+            "node": "Pos",
+            "line": 34,
+            "column": 1
+          }
+        }
+      ],
+      "pos": {
+        "node": "Pos",
+        "line": 23,
+        "column": 1
+      }
+    },
+    {
+      "node": "Does",
+      "description": "summarize tasks",
+      "lines": [
+        {
+          "node": "Step",
+          "text": "count the open and done tasks",
+          "soft": {
+            "node": "Soft",
+            "text": "a single pass over the list is plenty",
+            "pos": {
+              "node": "Pos",
+              "line": 39,
+              "column": 35
+            }
+          },
+          "decided": [],
+          "pos": {
+            "node": "Pos",
+            "line": 39,
+            "column": 3
+          }
+        },
+        {
+          "node": "Step",
+          "text": "a task is overdue when it is open and its due date is before today",
+          "soft": null,
+          "decided": [],
+          "pos": {
+            "node": "Pos",
+            "line": 40,
+            "column": 3
+          }
+        },
+        {
+          "node": "Step",
+          "text": "return a Summary",
+          "soft": null,
+          "decided": [],
+          "pos": {
+            "node": "Pos",
+            "line": 41,
+            "column": 3
+          }
+        },
+        {
+          "node": "Rule",
+          "kind": "always",
+          "text": "count each task exactly once as open or done",
+          "decided": [],
+          "pos": {
+            "node": "Pos",
+            "line": 42,
+            "column": 3
+          }
+        }
+      ],
+      "decided": [],
+      "examples": [
+        {
+          "node": "Example",
+          "given": "an open task due tomorrow, an open task due yesterday, a done task due yesterday",
+          "expect": [
+            "open 2",
+            "done 1",
+            "overdue 1"
+          ],
+          "target": null,
+          "pos": {
+            "node": "Pos",
+            "line": 44,
+            "column": 1
+          }
+        },
+        {
+          "node": "Example",
+          "given": "no tasks",
+          "expect": [
+            "open 0",
+            "done 0",
+            "overdue 0"
+          ],
+          "target": null,
+          "pos": {
+            "node": "Pos",
+            "line": 48,
+            "column": 1
+          }
+        }
+      ],
+      "pos": {
+        "node": "Pos",
+        "line": 38,
+        "column": 1
+      }
+    }
+  ],
+  "exacts": [
+    {
+      "node": "Exact",
+      "code": "def normalize_title(title: str) -> str:\n    return \" \".join(title.split()).casefold()",
+      "pos": {
+        "node": "Pos",
+        "line": 18,
+        "column": 1
+      }
+    }
+  ]
+}

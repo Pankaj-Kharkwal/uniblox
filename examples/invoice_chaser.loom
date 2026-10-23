@@ -1,0 +1,32 @@
+app InvoiceChaser
+target: python 3.12, fastapi, sqlite
+
+thing Invoice
+  client: text
+  client_email: email
+  amount: money (INR)
+  due: date
+  status: one of draft, sent, paid, overdue
+  reminders_sent: number = 0
+  last_reminded_at: datetime?
+
+does chase overdue invoices
+  every weekday at 10:00 IST
+  find invoices where due < today and status = sent or overdue
+  mark them overdue
+  queue a reminder email to the client ~ polite first, firmer after 2nd reminder
+  increment reminders_sent and set last_reminded_at
+  never email the same client twice in 24h
+  always skip invoices with status paid
+
+example
+  given invoice due 3 days ago, status sent, reminders_sent 0
+  expect status overdue, 1 email queued, reminders_sent 1
+
+example
+  given invoice due 3 days ago, status overdue, last_reminded_at 2 hours ago
+  expect 0 emails queued
+
+example
+  given invoice due 10 days ago, status paid
+  expect status paid, 0 emails queued

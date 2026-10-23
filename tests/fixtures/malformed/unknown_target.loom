@@ -1,0 +1,2 @@
+app X
+target: python 3.12, sqlit

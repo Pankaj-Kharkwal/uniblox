@@ -1,0 +1,98 @@
+{
+  "bad_dedent": {
+    "line": 5,
+    "column": 3,
+    "message": "inconsistent indentation: this line is indented by 2 spaces, which matches no enclosing block",
+    "hint": "use one of the indentation levels already open: 0 or 4 spaces"
+  },
+  "bad_enum_default": {
+    "line": 4,
+    "column": 3,
+    "message": "default 'medium' is not one of the options",
+    "hint": "choose one of: low, high"
+  },
+  "duplicate_thing": {
+    "line": 6,
+    "column": 1,
+    "message": "thing 'Task' is defined twice",
+    "hint": "merge the fields into one `thing` block"
+  },
+  "empty_one_of": {
+    "line": 4,
+    "column": 17,
+    "message": "`one of` needs at least one option",
+    "hint": "e.g. `status: one of draft, sent, paid`"
+  },
+  "example_before_does": {
+    "line": 3,
+    "column": 1,
+    "message": "this example comes before any `does` block",
+    "hint": "put examples after the does block they test, or write `example for <does>`"
+  },
+  "example_missing_expect": {
+    "line": 7,
+    "column": 31,
+    "message": "an example needs an `expect` line after `given`",
+    "hint": "e.g. `expect status overdue, 1 email queued`"
+  },
+  "field_without_type": {
+    "line": 4,
+    "column": 10,
+    "message": "missing type after ':'",
+    "hint": "e.g. `client: text` (types: text, email, number, money (CUR), date, datetime, one of a, b)"
+  },
+  "missing_app": {
+    "line": 1,
+    "column": 1,
+    "message": "a Loom file must start with `app <Name>`",
+    "hint": "e.g. `app InvoiceChaser` followed by `target: python 3.12`"
+  },
+  "missing_target": {
+    "line": 2,
+    "column": 1,
+    "message": "expected `target: ...` on the line after `app`",
+    "hint": "e.g. `target: python 3.12, fastapi, sqlite`"
+  },
+  "money_without_currency": {
+    "line": 4,
+    "column": 11,
+    "message": "money needs a currency",
+    "hint": "e.g. `money (INR)` or `money (USD)`"
+  },
+  "soft_on_rule": {
+    "line": 5,
+    "column": 21,
+    "message": "`~` soft preferences are not allowed on never/always rules",
+    "hint": "rules are hard constraints; move the preference to a step"
+  },
+  "synonym_type": {
+    "line": 4,
+    "column": 11,
+    "message": "unknown type 'string'",
+    "hint": "did you mean 'text'?"
+  },
+  "tab_indent": {
+    "line": 4,
+    "column": 1,
+    "message": "tab used for indentation",
+    "hint": "indent with spaces (2 per level is the convention)"
+  },
+  "unknown_target": {
+    "line": 2,
+    "column": 22,
+    "message": "unknown target component 'sqlit'",
+    "hint": "did you mean 'sqlite'?"
+  },
+  "unknown_type": {
+    "line": 4,
+    "column": 11,
+    "message": "unknown type 'monee'",
+    "hint": "did you mean 'money'?"
+  },
+  "unterminated_exact": {
+    "line": 3,
+    "column": 1,
+    "message": "unterminated `exact` block",
+    "hint": "close it with `}` on its own line, lined up with `exact`"
+  }
+}

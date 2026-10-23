@@ -1,0 +1,8 @@
+app X
+target: python 3.12
+does chase
+  find invoices
+
+example
+  given invoice due 3 days ago
+

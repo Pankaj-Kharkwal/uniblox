@@ -1,0 +1,5 @@
+app X
+target: python 3.12
+thing Invoice
+  client:
+  amount: money (INR)

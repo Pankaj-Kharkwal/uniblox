@@ -1,0 +1,3 @@
+app X
+thing Invoice
+  client: text

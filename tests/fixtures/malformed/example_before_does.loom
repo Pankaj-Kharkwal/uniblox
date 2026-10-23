@@ -1,0 +1,8 @@
+app X
+target: python 3.12
+example
+  given a task
+  expect it done
+
+does finish
+  mark it done

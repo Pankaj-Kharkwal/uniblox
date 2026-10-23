@@ -1,0 +1,7 @@
+app X
+target: python 3.12
+thing Task
+  title: text
+
+thing Task
+  due: date

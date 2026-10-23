@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "loom"
+version = "0.1.0"
+description = "Loom v0: an intent-first language that compiles plain-language intent, hard rules and executable examples into locked, tested Python."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "lark>=1.2",
+    "typer>=0.12",
+    "anthropic>=2.2",
+    # Runtime deps of generated projects: `loom test` and the green loop run the
+    # generated pytest suite in the current interpreter.
+    "pydantic[email]>=2.7",
+    "sqlmodel>=0.0.22",
+    "pytest>=8",
+    "hypothesis>=6",
+    "apscheduler>=3.10",
+    "fastapi>=0.110",
+    "tzdata",
+]
+
+[project.optional-dependencies]
+dev = ["pytest-cov>=5", "ruff>=0.6", "mypy>=1.11"]
+
+[project.scripts]
+loom = "loom.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["loom*"]
+
+[tool.setuptools.package-data]
+loom = ["grammar.lark", "prompts/*.md"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["legacy", "out", "tests/fixtures"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["loom"]
+
+[[tool.mypy.overrides]]
+module = ["lark.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["loom"]
+# LLM-facing modules are exercised through recorded fixtures but are not part of the
+# 85% gate, which covers the pure compiler (parser, types, hashing, lock, diff, ...).
+omit = ["loom/llm.py", "loom/ambiguity.py", "loom/generate.py", "loom/tests_gen.py"]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+skip_covered = true
