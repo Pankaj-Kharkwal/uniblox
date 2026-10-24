@@ -17,7 +17,7 @@ from loom.diff import diff as intent_diff
 from loom.eject import eject as eject_project
 from loom.errors import LoomError
 from loom.frontend import load
-from loom.llm import ClaudeClient
+from loom.llm import make_client
 from loom.lock import Lock, lock_path
 from loom.nodes import Does
 from loom.render import render_line
@@ -34,6 +34,15 @@ FileArg = Annotated[Path, typer.Argument(exists=True, dir_okay=False, help="A .l
 ModelOpt = Annotated[
     str | None,
     typer.Option("--model", help="Claude model (default: $LOOM_MODEL or claude-sonnet-5-5)."),
+]
+BackendOpt = Annotated[
+    str | None,
+    typer.Option(
+        "--backend",
+        help="Model backend: api (ANTHROPIC_API_KEY), claude-code (your Claude subscription via "
+        "the claude CLI) or auto (default: $LOOM_BACKEND, else api if a key is set, else "
+        "claude-code if installed).",
+    ),
 ]
 YesOpt = Annotated[
     bool, typer.Option("--yes", "-y", help="Accept the suggested answer to every ambiguity.")
@@ -77,6 +86,7 @@ def check(
     ] = False,
     yes: YesOpt = False,
     model: ModelOpt = None,
+    backend: BackendOpt = None,
 ) -> None:
     """Parse, type-check and scan for ambiguities, without generating code.
 
@@ -85,7 +95,7 @@ def check(
     try:
         fe = load(file)
         if not no_scan:
-            llm = ClaudeClient.from_env(model)
+            llm = make_client(model, backend)
             fe, answers = settle(
                 file, fe, llm, fe.program.does, yes=yes, ask=_ask if _interactive() else None
             )
@@ -154,6 +164,7 @@ def build_cmd(
     file: FileArg,
     yes: YesOpt = False,
     model: ModelOpt = None,
+    backend: BackendOpt = None,
     max_iters: Annotated[
         int, typer.Option("--max-iters", min=1, help="Repair attempts per failing block.")
     ] = 4,
@@ -172,7 +183,7 @@ def build_cmd(
         echo=typer.echo,
     )
     try:
-        report = build(file, lambda: ClaudeClient.from_env(model), opts)
+        report = build(file, lambda: make_client(model, backend), opts)
     except LoomError as err:
         _fail(err)
         return

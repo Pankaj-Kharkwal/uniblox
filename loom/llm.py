@@ -20,6 +20,9 @@ from __future__ import annotations
 import json
 import os
 import random
+import shutil
+import subprocess
+import tempfile
 import time
 from collections import Counter
 from collections.abc import Callable
@@ -271,3 +274,177 @@ def backoff_delay(attempt: int, *, base: float = 1.0, cap: float = 30.0) -> floa
     """Exponential backoff with full jitter: attempt 1 -> [0.5, 1)s, 2 -> [1, 2)s, ..."""
     ceiling: float = min(cap, base * 2.0 ** (attempt - 1))
     return ceiling / 2 + random.random() * ceiling / 2
+
+
+# --- Claude Code backend --------------------------------------------------------------------
+
+# Environment variables of a surrounding Claude Code session that must not leak into a child
+# `claude -p` process (it would try to join that session instead of running on its own).
+_KEEP_CLAUDE_VARS = {"CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CONFIG_DIR"}
+_TRANSIENT = ("overloaded", "rate limit", "rate_limit", "529", "503", "timed out", "timeout")
+
+
+def claude_code_env(base: dict[str, str] | None = None) -> dict[str, str]:
+    env = dict(os.environ if base is None else base)
+    hosted = "CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST" in env
+    for name in list(env):
+        if name in _KEEP_CLAUDE_VARS:
+            continue
+        if name == "CLAUDECODE" or name.startswith("CLAUDE_"):
+            del env[name]
+    if hosted:
+        env.pop("ANTHROPIC_BASE_URL", None)  # the host's proxy only serves the host session
+    return env
+
+
+@dataclass
+class ClaudeCodeClient(ClaudeClient):
+    """Runs each request through the Claude Code CLI (`claude -p`), so a Claude subscription
+    (Pro/Max) can power Loom without an API key.
+
+    Same cache, mock and record behavior as the API client, and the same cache keys, so
+    responses recorded through either backend are interchangeable. Authentication is Claude
+    Code's own: `claude` then `/login`, or a `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`.
+    """
+
+    executable: str = "claude"
+    timeout: int = 900
+    run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run
+
+    def command(self, request: LLMRequest, system_file: Path) -> list[str]:
+        return [
+            self.executable,
+            "-p",
+            "--output-format",
+            "json",
+            "--model",
+            self.model,
+            "--system-prompt-file",
+            str(system_file),
+            "--json-schema",
+            json.dumps(request.schema, separators=(",", ":")),
+            "--tools",
+            "",
+            "--effort",
+            request.effort,
+            "--no-session-persistence",
+            "--strict-mcp-config",
+        ]
+
+    def _call_api(self, key: str, request: LLMRequest) -> dict[str, Any]:
+        attempt = 0
+        while True:
+            attempt += 1
+            self.stats["api_calls"] += 1
+            with tempfile.TemporaryDirectory() as tmp:
+                system_file = Path(tmp) / "system.md"
+                system_file.write_text(request.system + "\n\n" + request.context, encoding="utf-8")
+                try:
+                    proc = self.run(
+                        self.command(request, system_file),
+                        input=request.prompt,
+                        capture_output=True,
+                        text=True,
+                        timeout=self.timeout,
+                        env=claude_code_env(),
+                    )
+                except FileNotFoundError as exc:
+                    raise GenerationError(
+                        f"the Claude Code CLI ({self.executable!r}) is not installed: "
+                        "see https://code.claude.com, or use an API key instead"
+                    ) from exc
+                except subprocess.TimeoutExpired as exc:
+                    proc = subprocess.CompletedProcess(exc.cmd, 124, "", "timed out")
+            data = _claude_json(proc.stdout)
+            error = _claude_error(proc, data)
+            if error is None:
+                break
+            if attempt < self.max_attempts and any(t in error.lower() for t in _TRANSIENT):
+                self.stats["retries"] += 1
+                self.sleep(backoff_delay(attempt))
+                continue
+            hint = ""
+            if "not logged in" in error.lower() or "/login" in error:
+                hint = (
+                    ". Log in once with `claude` (then /login) using your Claude subscription, or "
+                    "run `claude setup-token` and export CLAUDE_CODE_OAUTH_TOKEN"
+                )
+            raise GenerationError(
+                f"Claude Code failed on {request.kind} for {request.label}: {error}{hint}"
+            )
+        assert data is not None
+        output = data.get("structured_output")
+        if output is None:
+            try:
+                output = json.loads(str(data.get("result", "")))
+            except json.JSONDecodeError as exc:
+                raise GenerationError(
+                    f"Claude Code returned no structured output for {request.kind}: {exc}"
+                ) from exc
+        usage = data.get("usage") or {}
+        models = list((data.get("modelUsage") or {}).keys())
+        return {
+            "key": key,
+            "kind": request.kind,
+            "label": request.label,
+            "source": "claude-code",
+            "model": self.model,
+            "served_model": models[0] if models else None,
+            "loom_version": __version__,
+            "recorded_at": datetime.now(UTC).isoformat(timespec="seconds"),
+            "usage": {
+                k: usage.get(k)
+                for k in (
+                    "input_tokens",
+                    "output_tokens",
+                    "cache_read_input_tokens",
+                    "cache_creation_input_tokens",
+                )
+            },
+            "request": request.body(self.model),
+            "output": output,
+        }
+
+
+def _claude_json(stdout: str) -> dict[str, Any] | None:
+    try:
+        data = json.loads(stdout)
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _claude_error(
+    proc: subprocess.CompletedProcess[str], data: dict[str, Any] | None
+) -> str | None:
+    if data is None:
+        if proc.returncode == 0:
+            return "unreadable output from Claude Code"
+        return (proc.stderr or proc.stdout or f"exit code {proc.returncode}").strip()[:500]
+    if data.get("is_error") or proc.returncode != 0:
+        return str(data.get("result") or data.get("terminal_reason") or "unknown error")[:500]
+    return None
+
+
+BACKENDS = ("auto", "api", "claude-code")
+
+
+def make_client(model: str | None = None, backend: str | None = None) -> ClaudeClient:
+    """Pick the model backend: the Anthropic API, or the Claude Code CLI (subscription).
+
+    ``auto`` (the default, or ``$LOOM_BACKEND``) uses the API when ANTHROPIC_API_KEY is set,
+    otherwise Claude Code when the ``claude`` CLI is installed, otherwise the API (which then
+    explains how to authenticate).
+    """
+    choice = (backend or os.environ.get("LOOM_BACKEND") or "auto").lower()
+    if choice not in BACKENDS:
+        raise LoomError(f"unknown backend {choice!r}: use one of {', '.join(BACKENDS)}")
+    if choice == "auto":
+        if os.environ.get("ANTHROPIC_API_KEY"):
+            choice = "api"
+        elif shutil.which("claude"):
+            choice = "claude-code"
+        else:
+            choice = "api"
+    cls = ClaudeCodeClient if choice == "claude-code" else ClaudeClient
+    return cls.from_env(model)

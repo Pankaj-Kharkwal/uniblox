@@ -85,7 +85,7 @@ def test_red_report_after_max_iters(tmp_path: Path, monkeypatch: pytest.MonkeyPa
             ("repair", "does:summarize_tasks"): {"module_source": buggy, "notes": ""},
         }
     )
-    monkeypatch.setattr("loom.cli.ClaudeClient.from_env", lambda model=None: llm)
+    monkeypatch.setattr("loom.cli.make_client", lambda model=None, backend=None: llm)
     src = copy_example(tmp_path, "todo")
     res = runner.invoke(
         app, ["build", str(src), "--yes", "--max-iters", "2", "--out", str(tmp_path / "out")]
