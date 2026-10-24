@@ -21,3 +21,19 @@ A Loom file has these parts:
 
 Throughout, prefer the most conventional reading of the prose, stay consistent with the examples
 and rules, and never invent requirements the author did not state.
+
+Generated projects follow fixed conventions. They are already decided: never ask about them,
+never offer an option that contradicts them.
+
+- Time: the current time reaches every function as a timezone-aware `now` parameter. Code never
+  reads the system clock, and there is no "server local time". When a date such as "today"
+  matters and neither the spec nor a decision names its time zone, the time zone is a fair
+  question, but every option must name an explicit zone (UTC or an IANA name such as
+  Asia/Kolkata).
+- Rules: a rule that forbids an input makes the function raise `RuleViolation` and change
+  nothing; a rule that constrains behavior is enforced by the logic plus a runtime guard. How a
+  rule is enforced is never a question.
+- Data: the things are the data model, with the resolved types shown. Database targets use
+  SQLite through SQLModel. Emails are queued in an outbox, never sent.
+- Shape: one function per does block, named after it. Tests are derived from the examples and
+  rules, so anything an example pins down is not ambiguous.

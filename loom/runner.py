@@ -8,7 +8,7 @@ import subprocess
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 _TEST_FILE = re.compile(r"^tests/test_(?P<slug>.+)_(?:examples|rules)\.py$")
@@ -27,6 +27,21 @@ class CaseResult:
         m = _TEST_FILE.match(self.file)
         return m["slug"] if m else None
 
+    @property
+    def broken_test(self) -> bool:
+        """An error the test hits before reaching the code under test (a defect in the test).
+
+        pytest reports setup and collection problems as errors, not failures. Missing
+        fixtures, or errors whose traceback never leaves the tests/ folder, are the test's
+        fault; an import error inside src/ is the code's.
+        """
+        if self.outcome != "error":
+            return False
+        text = f"{self.message}\n{self.details}"
+        if "fixture '" in text and "not found" in text:
+            return True
+        return "tests/" in text and "src/" not in text
+
 
 @dataclass
 class RunResult:
@@ -44,6 +59,19 @@ class RunResult:
 
     def failing_blocks(self) -> set[str]:
         return {c.block for c in self.failures if c.block}
+
+    def repairable_blocks(self) -> set[str]:
+        """Blocks with failures that a change to the code could fix."""
+        return {c.block for c in self.failures if c.block and not c.broken_test}
+
+    def broken_tests(self) -> dict[str, str]:
+        """Test files whose tests cannot run, with their error output."""
+        out: dict[str, str] = {}
+        for c in self.failures:
+            if c.broken_test:
+                text = f"{c.name}: {c.message}\n{c.details}".strip()
+                out[c.file] = (out.get(c.file, "") + "\n\n" + text).strip()[:6000]
+        return out
 
     def counts(self) -> dict[str, int]:
         out: dict[str, int] = {}
@@ -123,4 +151,12 @@ def run_pytest(project: Path, *, timeout: int = 600, extra: list[str] | None = N
             out = (exc.stdout or "") if isinstance(exc.stdout, str) else ""
             return RunResult(returncode=124, output=out + f"\npytest timed out after {timeout}s")
         cases = parse_junit(report.read_text()) if report.exists() else []
-        return RunResult(returncode=proc.returncode, output=proc.stdout + proc.stderr, cases=cases)
+        # Paths relative to the project, so the output (fed back into prompts, hence into
+        # cache keys) is the same on every machine.
+        prefix = f"{project.resolve()}/"
+        cases = [
+            replace(c, message=c.message.replace(prefix, ""), details=c.details.replace(prefix, ""))
+            for c in cases
+        ]
+        output = (proc.stdout + proc.stderr).replace(prefix, "")
+        return RunResult(returncode=proc.returncode, output=output, cases=cases)

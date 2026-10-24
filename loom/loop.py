@@ -77,7 +77,7 @@ def green_loop(
     outcome = LoopOutcome(result=result, rounds=0, test_hashes=expected)
 
     while not result.ok and outcome.rounds < max_iters:
-        failing = sorted(b for b in result.failing_blocks() if b in modules)
+        failing = sorted(b for b in result.repairable_blocks() if b in modules)
         if not failing:
             break  # failures that no block owns (conftest, collection): nothing to repair
         outcome.rounds += 1

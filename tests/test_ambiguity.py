@@ -110,7 +110,7 @@ def test_settle_writes_decisions_and_reloads(tmp_path: Path) -> None:
     assert answers == [] and fe3 is fe2
 
 
-# --- CLI, replaying the recorded fixtures (LOOM_MOCK=1 is set by conftest) -----------------
+# --- CLI, with the synthetic model outputs ------------------------------------------------
 
 
 def copy_example(tmp_path: Path, name: str) -> Path:
@@ -119,7 +119,7 @@ def copy_example(tmp_path: Path, name: str) -> Path:
     return dst
 
 
-def test_check_yes_writes_decided_lines_then_is_stable(tmp_path: Path) -> None:
+def test_check_yes_writes_decided_lines_then_is_stable(tmp_path: Path, synthetic_cli: None) -> None:
     path = copy_example(tmp_path, "invoice_chaser")
     res = runner.invoke(app, ["check", str(path), "--yes"])
     assert res.exit_code == 0, res.output
@@ -134,7 +134,7 @@ def test_check_yes_writes_decided_lines_then_is_stable(tmp_path: Path) -> None:
     assert path.read_text() == text
 
 
-def test_check_without_answers_is_a_compile_error(tmp_path: Path) -> None:
+def test_check_without_answers_is_a_compile_error(tmp_path: Path, synthetic_cli: None) -> None:
     path = copy_example(tmp_path, "todo")
     before = path.read_text()
     res = runner.invoke(app, ["check", str(path)])
@@ -144,7 +144,9 @@ def test_check_without_answers_is_a_compile_error(tmp_path: Path) -> None:
     assert path.read_text() == before
 
 
-def test_check_interactive_answers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_check_interactive_answers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, synthetic_cli: None
+) -> None:
     monkeypatch.setenv("LOOM_INTERACTIVE", "1")
     path = copy_example(tmp_path, "todo")
     # 1st question: pick option 2; 2nd: accept the default; 3rd: type a custom answer.

@@ -22,3 +22,13 @@ def examples_dir() -> Path:
 @pytest.fixture
 def fixtures_dir() -> Path:
     return FIXTURES
+
+
+@pytest.fixture
+def synthetic_cli(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make `loom` CLI commands use the synthetic (hand-written) model outputs."""
+    from fakes import synthetic_llm
+
+    monkeypatch.setattr(
+        "loom.cli.make_client", lambda model=None, backend=None: synthetic_llm(ask=True)
+    )

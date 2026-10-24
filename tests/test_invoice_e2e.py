@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from fakes import recorded_outputs, replaying_llm
+from fakes import synthetic_llm, synthetic_outputs
 from typer.testing import CliRunner
 
 from loom.build import BuildOptions, build
@@ -23,7 +23,9 @@ def copy_example(tmp_path: Path) -> Path:
     return dst
 
 
-def test_invoice_chaser_builds_green_with_guard_test_scheduler_and_api(tmp_path: Path) -> None:
+def test_invoice_chaser_builds_green_with_guard_test_scheduler_and_api(
+    tmp_path: Path, synthetic_cli: None
+) -> None:
     from loom.cli import app
 
     src = copy_example(tmp_path)
@@ -73,7 +75,7 @@ def test_broken_example_goes_red_after_max_iters_and_its_test_is_unchanged(
             "expect status paid, 0 emails queued", "expect status paid, 1 email queued"
         )
     )
-    recorded = recorded_outputs()
+    recorded = synthetic_outputs()
     ex = recorded[("example_tests", LABEL)]
     head, e3 = ex["module_source"].split("def test_e3_paid_invoice_is_left_alone")
     broken_tests = {
@@ -98,7 +100,7 @@ def test_broken_example_goes_red_after_max_iters_and_its_test_is_unchanged(
         "module_source": recorded[("codegen", LABEL)]["module_source"],
         "notes": "The example contradicts rule R2 (always skip paid invoices); the rule wins.",
     }
-    llm = replaying_llm({("example_tests", LABEL): broken_tests, ("repair", LABEL): same_code})
+    llm = synthetic_llm({("example_tests", LABEL): broken_tests, ("repair", LABEL): same_code})
     out = tmp_path / "out"
     report = build(
         src, lambda: llm, BuildOptions(out_dir=out, yes=True, max_iters=3, echo=lambda s: None)

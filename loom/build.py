@@ -33,8 +33,8 @@ from loom.lock import (
     relative_out_dir,
 )
 from loom.loop import LoopOutcome, green_loop
-from loom.nodes import to_data
-from loom.runner import RunResult
+from loom.nodes import Does, to_data
+from loom.runner import RunResult, run_pytest
 from loom.scaffold import BlockGlue, Project, Schedule, glue_files, scaffold, strip_header
 from loom.tests_gen import example_tests, rule_tests
 from loom.validate import function_info
@@ -299,6 +299,8 @@ def build(path: Path, llm_factory: LLMFactory, opts: BuildOptions) -> BuildRepor
         current_modules[slug] = fixed
         return proj.header(f"does {slug}") + fixed.source
 
+    _fix_broken_tests(out, llm, fe, proj, modules, test_files, does_by_slug, context, echo)
+
     echo("running the generated tests")
     report.loop = green_loop(
         out,
@@ -325,6 +327,54 @@ def build(path: Path, llm_factory: LLMFactory, opts: BuildOptions) -> BuildRepor
         getattr(llm, "model", ""),
     )
     return report
+
+
+def _fix_broken_tests(
+    out: Path,
+    llm: LLM,
+    fe: Frontend,
+    proj: Project,
+    modules: dict[str, GeneratedModule],
+    test_files: dict[str, list[str]],
+    does_by_slug: dict[str, Does],
+    context: str,
+    echo: Callable[[str], None],
+    attempts: int = 2,
+) -> None:
+    """Re-translate new test modules that cannot even run, before they are locked.
+
+    A test that errors before reaching the code under test (a missing fixture, a crash in its
+    own setup) is a broken translation, not failing code. Once the green loop starts, tests
+    are immutable; this is the last point where the test writer may try again.
+    """
+    new_tests = sorted(rel for rels in test_files.values() for rel in rels)
+    for _ in range(attempts):
+        if not new_tests:
+            return
+        broken = {
+            rel: error
+            for rel, error in run_pytest(out, extra=new_tests).broken_tests().items()
+            if rel in new_tests
+        }
+        if not broken:
+            return
+        for rel, error in sorted(broken.items()):
+            slug, kind = rel.removeprefix("tests/test_").removesuffix(".py").rsplit("_", 1)
+            make = example_tests if kind == "examples" else rule_tests
+            first = error.splitlines()[0] if error else "error"
+            echo(f"re-translating the {kind} of {slug}: the tests could not run ({first[:80]})")
+            previous = strip_header((out / rel).read_text(encoding="utf-8"))
+            src = make(
+                llm,
+                fe,
+                does_by_slug[slug],
+                proj,
+                modules[slug].signature,
+                context=context,
+                broken=(previous, error),
+            )
+            if src is not None:
+                write_files(out, {rel: proj.header(f"{kind} of does {slug}") + src})
 
 
 def _remove_stale(

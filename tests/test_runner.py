@@ -49,3 +49,23 @@ def test_run_pytest_reports_failing_blocks(tmp_path: Path) -> None:
 def test_case_result_block_only_for_generated_test_files() -> None:
     assert CaseResult("tests/test_a_b_rules.py", "t", "failed").block == "a_b"
     assert CaseResult("tests/conftest.py", "t", "error").block is None
+
+
+def test_broken_tests_are_told_apart_from_failing_code() -> None:
+    missing_fixture = CaseResult(
+        "tests/test_a_rules.py", "t", "error", "failed on setup", "E fixture 'specs' not found"
+    )
+    own_setup = CaseResult(
+        "tests/test_a_rules.py", "t", "error", "", "tests/test_a_rules.py:3: NameError"
+    )
+    import_in_src = CaseResult(
+        "tests/test_a_rules.py", "t", "error", "", "src/pkg/a.py:1: SyntaxError"
+    )
+    plain_failure = CaseResult("tests/test_a_rules.py", "t", "failed", "assert 1 == 2", "")
+    assert missing_fixture.broken_test and own_setup.broken_test
+    assert not import_in_src.broken_test and not plain_failure.broken_test
+    from loom.runner import RunResult
+
+    result = RunResult(1, "", [missing_fixture, import_in_src, plain_failure])
+    assert result.repairable_blocks() == {"a"}
+    assert list(result.broken_tests()) == ["tests/test_a_rules.py"]

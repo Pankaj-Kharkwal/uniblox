@@ -1,0 +1,103 @@
+{
+  "key": "053c167569ea55b9d3b739fbc31ff4cd",
+  "kind": "ambiguity",
+  "label": "does:summarize_tasks",
+  "source": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "served_model": "claude-sonnet-5-5",
+  "loom_version": "0.1.0",
+  "recorded_at": "2026-10-24T11:35:06+00:00",
+  "usage": {
+    "input_tokens": 2,
+    "output_tokens": 295,
+    "cache_read_input_tokens": 2815,
+    "cache_creation_input_tokens": 374
+  },
+  "request": {
+    "model": "claude-sonnet-5-5",
+    "max_tokens": 16000,
+    "system": [
+      {
+        "type": "text",
+        "text": "You are part of Loom, a compiler that turns plain-language intent into locked, tested Python 3.12.\n\nA Loom file has these parts:\n\n- `app <Name>` and `target:`: the project and its stack (python 3.12, optionally fastapi, sqlite).\n- `thing <Name>`: a data shape. Its fields have already been resolved to concrete Python types,\n  shown to you next to each field. Things compile to Pydantic models (SQLModel tables when the\n  target has a database) without your involvement.\n- `does <description>`: one unit of behavior, written as prose steps. Each does block becomes\n  one Python function whose name is the description in snake_case.\n- `every ...` inside a does block: when the job runs (a schedule), not a step of the logic.\n- `never ...` / `always ...` inside a does block: hard rules. They are numbered R1, R2, ... in\n  order. Rules are never optional and never softened.\n- `~ text` after a step: a soft preference (\"vibe\"). Interpret it freely and sensibly.\n- `# decided: ...`: the recorded answer to an earlier ambiguity. Treat it as a hard constraint,\n  exactly as binding as a rule.\n- `example` with `given` / `expect`: executable examples. They are the contract: the generated\n  code must make every example pass, and every comma-separated `expect` clause is checked.\n- `exact { ... }`: raw Python copied verbatim into the generated project. Nobody rewrites it; it\n  can be imported and called.\n\nThroughout, prefer the most conventional reading of the prose, stay consistent with the examples\nand rules, and never invent requirements the author did not state.\n\nGenerated projects follow fixed conventions. They are already decided: never ask about them,\nnever offer an option that contradicts them.\n\n- Time: the current time reaches every function as a timezone-aware `now` parameter. Code never\n  reads the system clock, and there is no \"server local time\". When a date such as \"today\"\n  matters and neither the spec nor a decision names its time zone, the time zone is a fair\n  question, but every option must name an explicit zone (UTC or an IANA name such as\n  Asia/Kolkata).\n- Rules: a rule that forbids an input makes the function raise `RuleViolation` and change\n  nothing; a rule that constrains behavior is enforced by the logic plus a runtime guard. How a\n  rule is enforced is never a question.\n- Data: the things are the data model, with the resolved types shown. Database targets use\n  SQLite through SQLModel. Emails are queued in an outbox, never sent.\n- Shape: one function per does block, named after it. Tests are derived from the examples and\n  rules, so anything an example pins down is not ambiguous.\n\n\nYour job right now: find the genuine ambiguities in ONE does block, before any code is written.\n\nA genuine ambiguity is a point where two careful engineers, both reading the block faithfully,\nwould write code that behaves differently in a way a test or the author would notice. Typical\nsources:\n\n- boundaries: `<` versus `<=`, whether a window like \"24h\" is rolling or per calendar day,\n  whether \"after the 2nd reminder\" means from the 3rd reminder on;\n- calendars and time zones: which days a \"weekday\" covers, which zone \"today\" is measured in;\n- operator precedence in prose: \"due < today and status = sent or overdue\";\n- what a step does to records it does not select, or when nothing matches;\n- how two lines interact, for example whether a rule skips a record or fails the whole run.\n\nNot ambiguities (do not report these):\n\n- anything already settled by a `# decided:` line, a rule, a field type, or an example;\n- naming, code style, data-structure choice, performance, or implementation strategy;\n- the wording of a `~` soft preference, unless it contains a threshold or count that changes\n  behavior (then ask about the threshold only);\n- requirements the author never hinted at.\n\nReport at most 4 ambiguities, most consequential first, and return an empty list when the block\nis clear. For each one give:\n\n- `line`: the number in the `[L<n>]` prefix of the line it concerns, or -1 for the whole block;\n- `question`: one short question;\n- `options`: 2 to 4 mutually exclusive answers, each written as a complete, self-contained\n  decision as it would appear after `# decided:` (for example \"weekdays are Monday to Friday in\n  Asia/Kolkata time\"), each under 120 characters;\n- `suggested`: the index in `options` of the answer you recommend: the most conventional reading\n  that is consistent with the examples;\n- `why`: one sentence on what behavior changes depending on the answer.\n"
+      },
+      {
+        "type": "text",
+        "text": "# Project\n\napp TodoList\ntarget: python 3.12\n\n# Things (data shapes) with their resolved Python types\n\nthing Task\n  title: text                              -> str\n  priority: one of low, normal, high = normal -> TaskPriority\n  status: one of open, done = open         -> TaskStatus\n  due: date?                               -> Optional[date]\n  completed_at: datetime?                  -> Optional[datetime]\n\nthing Summary\n  open: number = 0                         -> int\n  done: number = 0                         -> int\n  overdue: number = 0                      -> int\n\n# Top-level exact helpers (verbatim Python, importable from the `exact` module)\n\nexact {\n  def normalize_title(title: str) -> str:\n      return \" \".join(title.split()).casefold()\n}\n",
+        "cache_control": {
+          "type": "ephemeral"
+        }
+      }
+    ],
+    "messages": [
+      {
+        "role": "user",
+        "content": "Here is the does block to check. Lines are prefixed with [L<n>]; rules also carry their id.\n\ndoes summarize tasks\n  [L0] count the open and done tasks ~ a single pass over the list is plenty\n  [L1] a task is overdue when it is open and its due date is before today\n  [L2] return a Summary\n  [L3] (R1) always count each task exactly once as open or done\n\n# E1\nexample\n  given an open task due tomorrow, an open task due yesterday, a done task due yesterday\n  expect open 2, done 1, overdue 1\n\n# E2\nexample\n  given no tasks\n  expect open 0, done 0, overdue 0"
+      }
+    ],
+    "output_config": {
+      "effort": "low",
+      "format": {
+        "type": "json_schema",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "ambiguities": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "line": {
+                    "type": "integer"
+                  },
+                  "question": {
+                    "type": "string"
+                  },
+                  "options": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "suggested": {
+                    "type": "integer"
+                  },
+                  "why": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "line",
+                  "question",
+                  "options",
+                  "suggested",
+                  "why"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "ambiguities"
+          ],
+          "additionalProperties": false
+        }
+      }
+    }
+  },
+  "output": {
+    "ambiguities": [
+      {
+        "line": 1,
+        "question": "In which time zone is 'today' measured when deciding if a due date is before today?",
+        "options": [
+          "today is the calendar date of now in UTC",
+          "today is the calendar date of now in Asia/Kolkata time",
+          "today is the calendar date of now in America/New_York time"
+        ],
+        "suggested": 0,
+        "why": "Near midnight, a task due on a given date is overdue or not depending on which zone's date is used."
+      }
+    ]
+  }
+}

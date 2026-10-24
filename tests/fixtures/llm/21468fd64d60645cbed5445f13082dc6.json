@@ -1,0 +1,86 @@
+{
+  "key": "21468fd64d60645cbed5445f13082dc6",
+  "kind": "codegen",
+  "label": "does:chase_overdue_invoices",
+  "source": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "served_model": "claude-sonnet-5-5",
+  "loom_version": "0.1.0",
+  "recorded_at": "2026-10-24T11:36:05+00:00",
+  "usage": {
+    "input_tokens": 2,
+    "output_tokens": 2116,
+    "cache_read_input_tokens": 555,
+    "cache_creation_input_tokens": 4589
+  },
+  "request": {
+    "model": "claude-sonnet-5-5",
+    "max_tokens": 32000,
+    "system": [
+      {
+        "type": "text",
+        "text": "You are part of Loom, a compiler that turns plain-language intent into locked, tested Python 3.12.\n\nA Loom file has these parts:\n\n- `app <Name>` and `target:`: the project and its stack (python 3.12, optionally fastapi, sqlite).\n- `thing <Name>`: a data shape. Its fields have already been resolved to concrete Python types,\n  shown to you next to each field. Things compile to Pydantic models (SQLModel tables when the\n  target has a database) without your involvement.\n- `does <description>`: one unit of behavior, written as prose steps. Each does block becomes\n  one Python function whose name is the description in snake_case.\n- `every ...` inside a does block: when the job runs (a schedule), not a step of the logic.\n- `never ...` / `always ...` inside a does block: hard rules. They are numbered R1, R2, ... in\n  order. Rules are never optional and never softened.\n- `~ text` after a step: a soft preference (\"vibe\"). Interpret it freely and sensibly.\n- `# decided: ...`: the recorded answer to an earlier ambiguity. Treat it as a hard constraint,\n  exactly as binding as a rule.\n- `example` with `given` / `expect`: executable examples. They are the contract: the generated\n  code must make every example pass, and every comma-separated `expect` clause is checked.\n- `exact { ... }`: raw Python copied verbatim into the generated project. Nobody rewrites it; it\n  can be imported and called.\n\nThroughout, prefer the most conventional reading of the prose, stay consistent with the examples\nand rules, and never invent requirements the author did not state.\n\nGenerated projects follow fixed conventions. They are already decided: never ask about them,\nnever offer an option that contradicts them.\n\n- Time: the current time reaches every function as a timezone-aware `now` parameter. Code never\n  reads the system clock, and there is no \"server local time\". When a date such as \"today\"\n  matters and neither the spec nor a decision names its time zone, the time zone is a fair\n  question, but every option must name an explicit zone (UTC or an IANA name such as\n  Asia/Kolkata).\n- Rules: a rule that forbids an input makes the function raise `RuleViolation` and change\n  nothing; a rule that constrains behavior is enforced by the logic plus a runtime guard. How a\n  rule is enforced is never a question.\n- Data: the things are the data model, with the resolved types shown. Database targets use\n  SQLite through SQLModel. Emails are queued in an outbox, never sent.\n- Shape: one function per does block, named after it. Tests are derived from the examples and\n  rules, so anything an example pins down is not ambiguous.\n\n\nYour job right now: write the Python module for ONE does block.\n\nRequirements, all mandatory:\n\n1. Define exactly one public, top-level function, with the exact name you are given, in a\n   module of its own. Put helpers in the same module with a leading underscore. Use full type\n   hints and add a short docstring that states the behavior and the decisions it honors.\n2. Import the project's own code with absolute imports from the package you are given\n   (`from <package>.models import ...`). Never redefine the models; they are generated from\n   the things and already exist. Use only the allowed imports.\n3. Time: if the behavior depends on the current time or date, take a keyword-only parameter\n   `now: datetime | None = None` and start with `now = now or utcnow()` (from\n   `<package>.runtime`). Never call `datetime.now()`, `date.today()` or `time.time()`\n   yourself. `now` is timezone-aware; when the spec or a decision names a time zone, convert\n   with `zoneinfo.ZoneInfo` before taking dates.\n4. Database targets: take the SQLModel `Session` as the first positional parameter named\n   `session`, query with `sqlmodel.select`, modify the objects you load, `session.add` them,\n   and finish with `session.flush()`. Never commit, never create engines or sessions.\n   Datetimes read back from the database are timezone-aware (UTC).\n5. Emails are never sent. \"Queue an email\" means `queue_email(...)` from `<package>.outbox`.\n6. Rules: every never/always rule has a guard id such as `\"chase_overdue_invoices:R1\"`. Call\n   `guard(<condition that must be true>, \"<guard id>\", <optional detail>)` from\n   `<package>.runtime` for every rule. Two situations:\n   - If a rule forbids an input the caller might pass (an example expects \"a rule violation\"),\n     the guard is what rejects it: check it before changing anything.\n   - Otherwise write the logic so the rule always holds (skip, filter, cap...), and still put\n     the guard immediately before the action the rule protects, so that a bug raises\n     `RuleViolation` instead of silently breaking the rule.\n7. `# decided:` lines are hard constraints, exactly like rules. `~` soft preferences are\n   guidance: interpret them sensibly, they are not tested literally.\n8. Examples are the contract. Tests will be written from the examples and rules using only\n   your function's signature (not its body), by someone who sees the same models, runtime and\n   fixtures as you. So choose parameters and a return value that make each example natural to\n   set up and check, and return something useful (the updated objects, or a small result\n   object) rather than None.\n9. `exact` helpers are verbatim author code: import and call them, never copy or change them.\n10. If the block has an `every ...` trigger, fill `schedule` with a 5-field crontab in\n    APScheduler's `CronTrigger.from_crontab` syntax (minute hour day month day_of_week, with\n    day names like `mon-fri`) and an IANA time zone, honoring any decisions. Otherwise leave\n    both fields as empty strings.\n11. The module must stand on its own: no mention of the compiler or of these instructions.\n\nReturn the complete module source in `module_source` (no markdown fences), and in `notes` one\nor two sentences on any interpretation you made.\n"
+      },
+      {
+        "type": "text",
+        "text": "# Project\n\napp InvoiceChaser\ntarget: python 3.12, fastapi, sqlite\n\n# Things (data shapes) with their resolved Python types\n\nthing Invoice\n  client: text                             -> str\n  client_email: email                      -> EmailStr\n  amount: money (INR)                      -> Decimal  (currency INR)\n  due: date                                -> date\n  status: one of draft, sent, paid, overdue -> InvoiceStatus\n  reminders_sent: number = 0               -> int\n  last_reminded_at: datetime?              -> Optional[datetime]\n\n# Generated project\n\nPython package `invoice_chaser` (src layout). Use absolute imports, for example `from invoice_chaser.models import ...`.\n\n## invoice_chaser.models (generated from the things; never redefine them)\n\n```python\nfrom __future__ import annotations\n\nfrom datetime import date, datetime\nfrom decimal import Decimal\nfrom enum import StrEnum\nfrom typing import Optional\n\nfrom pydantic import EmailStr\nfrom sqlmodel import AutoString, Field, SQLModel\nfrom invoice_chaser.db import UTCDateTime\n\n# Currency of every money field, as written in the spec.\nCURRENCIES: dict[str, str] = {'Invoice.amount': 'INR'}\n\n\nclass InvoiceStatus(StrEnum):\n    DRAFT = 'draft'\n    SENT = 'sent'\n    PAID = 'paid'\n    OVERDUE = 'overdue'\n\n\nclass Invoice(SQLModel, table=True):\n    id: Optional[int] = Field(default=None, primary_key=True)\n    client: str\n    client_email: EmailStr = Field(sa_type=AutoString)\n    amount: Decimal = Field(max_digits=14, decimal_places=2, description=\"money (INR)\")\n    due: date\n    status: InvoiceStatus\n    reminders_sent: int = Field(default=0)\n    last_reminded_at: Optional[datetime] = Field(default=None, sa_type=UTCDateTime)\n```\n\n## invoice_chaser.runtime\n- `guard(condition, rule_id, detail=\"\")`: raise `RuleViolation` when `condition` is falsy.\n- `RuleViolation`: subclass of `AssertionError`; has `.rule_id` and `.rule` (the rule text).\n- `utcnow()`: the current time as an aware UTC datetime.\n\n## invoice_chaser.outbox (a database table: emails are queued, never sent)\n- `OutboxEmail`: SQLModel table `outbox` with `id`, `to`, `subject`, `body`, `queued_at`\n  (aware datetime) and `ref` (free text saying what the email is about, e.g. \"Invoice:3\").\n- `queue_email(session, *, to, subject, body, now, ref=\"\") -> OutboxEmail`: add and flush.\n- `queued_emails(session, *, to=None) -> list[OutboxEmail]`: queued emails, oldest first.\n\n## invoice_chaser.db\n- `memory_session()`: context manager yielding a `Session` on a fresh in-memory database with\n  every table created. For tests.\n- `session_scope()`: context manager yielding a production `Session` that commits on success.\n- Datetime columns store aware datetimes and return them aware, in UTC.\n\n## Test fixtures (tests/conftest.py)\n- `now`: a fixed, timezone-aware datetime, 2026-03-11T04:30:00+00:00, which is Wednesday\n  2026-03-11 10:00 in Asia/Kolkata.\n- `session`: a fresh in-memory database `Session` with every table created.\n- Hypothesis runs derandomized with 50 examples per test, no deadline, and function-scoped\n  fixtures allowed.\n\n## Allowed imports\nThe Python standard library (except os, sys, subprocess, socket, shutil, pathlib, importlib,\nthreading, multiprocessing, urllib, http, pickle and builtins), pydantic, sqlmodel,\nsqlalchemy, the package itself, and in tests also pytest and hypothesis.\n",
+        "cache_control": {
+          "type": "ephemeral"
+        }
+      }
+    ],
+    "messages": [
+      {
+        "role": "user",
+        "content": "Function name: `chase_overdue_invoices`\nModule: `invoice_chaser.chase_overdue_invoices` (file src/invoice_chaser/chase_overdue_invoices.py)\nTarget has a database: yes (sqlite via SQLModel)\n\nThe does block (lines prefixed [L<n>], rules with their id):\n\ndoes chase overdue invoices\n  [L0] every weekday at 10:00 IST\n  [L1] find invoices where due < today and status = sent or overdue\n    # decided: today is the current date in Asia/Kolkata; due strictly before today\n  [L2] mark them overdue\n  [L3] queue a reminder email to the client ~ polite first, firmer after 2nd reminder\n    # decided: Firm when reminders_sent >= 2 before this send (3rd reminder onward)\n  [L4] increment reminders_sent and set last_reminded_at\n  [L5] (R1) never email the same client twice in 24h\n    # decided: Still mark it overdue, but queue no email and leave reminders_sent and last_reminded_at unchanged\n    # decided: Same client_email; one email per client per run, others are skipped\n  [L6] (R2) always skip invoices with status paid\n\n# E1\nexample\n  given invoice due 3 days ago, status sent, reminders_sent 0\n  expect status overdue, 1 email queued, reminders_sent 1\n\n# E2\nexample\n  given invoice due 3 days ago, status overdue, last_reminded_at 2 hours ago\n  expect 0 emails queued\n\n# E3\nexample\n  given invoice due 10 days ago, status paid\n  expect status paid, 0 emails queued\n\nRule guard ids:\n- R1 -> guard id \"chase_overdue_invoices:R1\": never email the same client twice in 24h\n- R2 -> guard id \"chase_overdue_invoices:R2\": always skip invoices with status paid\n\nWrite the module."
+      }
+    ],
+    "output_config": {
+      "effort": "medium",
+      "format": {
+        "type": "json_schema",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "module_source": {
+              "type": "string"
+            },
+            "schedule": {
+              "type": "object",
+              "properties": {
+                "cron": {
+                  "type": "string"
+                },
+                "timezone": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "cron",
+                "timezone"
+              ],
+              "additionalProperties": false
+            },
+            "notes": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "module_source",
+            "schedule",
+            "notes"
+          ],
+          "additionalProperties": false
+        }
+      }
+    }
+  },
+  "output": {
+    "module_source": "from __future__ import annotations\n\nfrom datetime import datetime, timedelta\nfrom zoneinfo import ZoneInfo\n\nfrom sqlmodel import Session, select\n\nfrom invoice_chaser.models import Invoice, InvoiceStatus\nfrom invoice_chaser.outbox import queue_email\nfrom invoice_chaser.runtime import guard, utcnow\n\n_IST = ZoneInfo(\"Asia/Kolkata\")\n\n\ndef _key(email: str) -> str:\n    return str(email).strip().lower()\n\n\ndef _compose(invoice: Invoice) -> tuple[str, str]:\n    \"\"\"Polite for the first two reminders, firm from the third onward.\"\"\"\n    amount = f\"INR {invoice.amount}\"\n    if invoice.reminders_sent >= 2:\n        subject = f\"Final notice: overdue invoice of {amount}\"\n        body = (\n            f\"Dear {invoice.client},\\n\\n\"\n            f\"Despite previous reminders, your invoice of {amount} due on \"\n            f\"{invoice.due.isoformat()} remains unpaid. Please arrange payment \"\n            \"immediately.\\n\\nRegards\"\n        )\n    else:\n        subject = f\"Friendly reminder: invoice of {amount} is overdue\"\n        body = (\n            f\"Dear {invoice.client},\\n\\n\"\n            f\"We kindly remind you that your invoice of {amount} was due on \"\n            f\"{invoice.due.isoformat()}. If you have already paid, please \"\n            \"disregard this message. Thank you!\\n\\nRegards\"\n        )\n    return subject, body\n\n\ndef chase_overdue_invoices(\n    session: Session, *, now: datetime | None = None\n) -> list[Invoice]:\n    \"\"\"Mark past-due sent/overdue invoices overdue and queue reminder emails.\n\n    Today is the date in Asia/Kolkata; due must be strictly before it. Paid\n    invoices are skipped (R2). A client (same client_email) is emailed at most\n    once per 24h and once per run (R1); otherwise the invoice is still marked\n    overdue but nothing else changes. Firm tone once reminders_sent >= 2.\n    Returns the invoices that were marked overdue.\n    \"\"\"\n    now = now or utcnow()\n    today = now.astimezone(_IST).date()\n    window = timedelta(hours=24)\n\n    # Latest reminder time per client, across all invoices.\n    last_by_client: dict[str, datetime] = {}\n    for inv in session.exec(select(Invoice)).all():\n        if inv.last_reminded_at is not None:\n            k = _key(inv.client_email)\n            if k not in last_by_client or inv.last_reminded_at > last_by_client[k]:\n                last_by_client[k] = inv.last_reminded_at\n\n    candidates = session.exec(\n        select(Invoice)\n        .where(Invoice.due < today)\n        .where(Invoice.status.in_([InvoiceStatus.SENT, InvoiceStatus.OVERDUE]))\n        .order_by(Invoice.id)\n    ).all()\n\n    processed: list[Invoice] = []\n    for inv in candidates:\n        guard(\n            inv.status != InvoiceStatus.PAID,\n            \"chase_overdue_invoices:R2\",\n            f\"invoice {inv.id} is paid\",\n        )\n        inv.status = InvoiceStatus.OVERDUE\n        session.add(inv)\n        processed.append(inv)\n\n        k = _key(inv.client_email)\n        last = last_by_client.get(k)\n        if last is not None and now - last < window:\n            continue\n\n        guard(\n            last is None or now - last >= window,\n            \"chase_overdue_invoices:R1\",\n            f\"client {inv.client_email} emailed within 24h\",\n        )\n        subject, body = _compose(inv)\n        queue_email(\n            session,\n            to=str(inv.client_email),\n            subject=subject,\n            body=body,\n            now=now,\n            ref=f\"Invoice:{inv.id}\",\n        )\n        inv.reminders_sent += 1\n        inv.last_reminded_at = now\n        last_by_client[k] = now\n\n    session.flush()\n    return processed\n",
+    "schedule": {
+      "cron": "0 10 * * mon-fri",
+      "timezone": "Asia/Kolkata"
+    },
+    "notes": "The 24h check looks at last_reminded_at across all invoices sharing the same client_email (case-insensitive), and each run emails a client at most once. Returns the invoices marked overdue, whether or not an email was queued."
+  }
+}

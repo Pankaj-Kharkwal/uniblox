@@ -48,8 +48,24 @@ Targets are hypotheses for the pilot.
 - **M6**: `loom diff` (intent diff plus code impact), `loom eject`, README with a 60-second
   quickstart and honest limitations.
 
-### Phase 2: reality check (the day an `ANTHROPIC_API_KEY` is available)
-- Re-record every fixture with `LOOM_RECORD=1`. Hand-written responses are replaced, not kept.
+### Phase 2: reality check (in progress)
+
+Done:
+- A Claude Code backend (`--backend claude-code`) runs Loom on a Claude subscription, with no
+  API key.
+- First real run: both examples built **green with zero repair rounds**. todo took 45 s and
+  8 calls (10 tests); invoice_chaser took 41 s and 4 calls (6 tests). The 24h rule's guard and
+  property tests caught the same mutations as before.
+- Two real-model problems were found and fixed:
+  - The ambiguity scan asked about clocks and suggested "server local time". The fix: Loom's
+    fixed conventions now go in the shared prompt.
+  - A Hypothesis test passed its strategy positionally, so it could not run. The fix: the
+    prompt asks for strategies by keyword, and any test that cannot run is re-translated
+    before tests are locked.
+- Real recordings now back the acceptance tests (`tests/fixtures/llm`). The hand-written
+  outputs moved to `tests/fixtures/synthetic`, for the mechanics tests.
+
+Remaining:
 - `bench/`: 20 small real-world specs, including `store.loom`, a port of the legacy Uniblox
   store's nth-order discount (the rule that was 3 in one file and 5 in another).
 - `scripts/bench.py` reports hands-off green rate, repair rounds, cost and time per block.

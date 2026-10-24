@@ -7,6 +7,7 @@ from collections import Counter
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -76,38 +77,48 @@ class FakeSDK:
         yield SimpleNamespace(get_final_message=lambda: item)
 
 
-def recorded_outputs() -> dict[tuple[str, str], dict[str, Any]]:
-    """Recorded fixture outputs by (kind, label), for FakeLLMs that ignore exact prompts.
+SYNTHETIC = Path(__file__).parent / "fixtures" / "synthetic"
 
-    Ambiguity responses are left out: a block has several (before and after decisions).
+
+def synthetic_outputs() -> dict[tuple[str, str], dict[str, Any]]:
+    """Hand-written model outputs by (kind, label), from tests/fixtures/synthetic.
+
+    They exercise Loom's mechanics with controlled answers; they are not model recordings.
+    For ambiguity, the entry with questions is kept (the empty re-scan ones are implied).
     """
-    from pathlib import Path
-
     out: dict[tuple[str, str], dict[str, Any]] = {}
-    for path in sorted((Path(__file__).parent / "fixtures" / "llm").glob("*.json")):
+    for path in sorted(SYNTHETIC.glob("*.json")):
         entry = json.loads(path.read_text())
-        if entry["kind"] != "ambiguity":
-            out[(entry["kind"], entry["label"])] = entry["output"]
+        key = (entry["kind"], entry["label"])
+        if entry["kind"] == "ambiguity" and not entry["output"]["ambiguities"]:
+            continue
+        out[key] = entry["output"]
     return out
 
 
-def replaying_llm(overrides: dict[tuple[str, str], Any] | None = None) -> FakeLLM:
-    """A FakeLLM answering from the recorded fixtures by (kind, label), never asking questions.
+def synthetic_llm(
+    overrides: dict[tuple[str, str], Any] | None = None, *, ask: bool = False
+) -> FakeLLM:
+    """A FakeLLM answering from the synthetic outputs by (kind, label).
 
+    Ambiguity scans return no questions unless ``ask`` is set; then a block gets its
+    synthetic questions until its prompt shows a ``# decided:`` line.
     ``overrides`` maps (kind, label) to an output dict, or to a list of outputs used in turn.
     """
-    recorded = recorded_outputs()
+    outputs = synthetic_outputs()
     queues = {k: (list(v) if isinstance(v, list) else v) for k, v in (overrides or {}).items()}
 
     def respond(request: LLMRequest) -> dict[str, Any]:
         key = (request.kind, request.label)
-        if request.kind == "ambiguity":
-            return {"ambiguities": []}
         if key in queues:
             value = queues[key]
             if isinstance(value, list):
                 return value.pop(0) if len(value) > 1 else value[0]
             return value
-        return recorded[key]
+        if request.kind == "ambiguity":
+            if ask and "# decided:" not in request.prompt and key in outputs:
+                return outputs[key]
+            return {"ambiguities": []}
+        return outputs[key]
 
     return FakeLLM(respond)

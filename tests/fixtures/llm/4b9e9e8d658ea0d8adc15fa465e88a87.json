@@ -1,0 +1,94 @@
+{
+  "key": "4b9e9e8d658ea0d8adc15fa465e88a87",
+  "kind": "rule_tests",
+  "label": "does:chase_overdue_invoices",
+  "source": "claude-code",
+  "model": "claude-sonnet-5-5",
+  "served_model": "claude-sonnet-5-5",
+  "loom_version": "0.1.0",
+  "recorded_at": "2026-10-24T11:36:20+00:00",
+  "usage": {
+    "input_tokens": 2,
+    "output_tokens": 1178,
+    "cache_read_input_tokens": 544,
+    "cache_creation_input_tokens": 4112
+  },
+  "request": {
+    "model": "claude-sonnet-5-5",
+    "max_tokens": 32000,
+    "system": [
+      {
+        "type": "text",
+        "text": "You are part of Loom, a compiler that turns plain-language intent into locked, tested Python 3.12.\n\nA Loom file has these parts:\n\n- `app <Name>` and `target:`: the project and its stack (python 3.12, optionally fastapi, sqlite).\n- `thing <Name>`: a data shape. Its fields have already been resolved to concrete Python types,\n  shown to you next to each field. Things compile to Pydantic models (SQLModel tables when the\n  target has a database) without your involvement.\n- `does <description>`: one unit of behavior, written as prose steps. Each does block becomes\n  one Python function whose name is the description in snake_case.\n- `every ...` inside a does block: when the job runs (a schedule), not a step of the logic.\n- `never ...` / `always ...` inside a does block: hard rules. They are numbered R1, R2, ... in\n  order. Rules are never optional and never softened.\n- `~ text` after a step: a soft preference (\"vibe\"). Interpret it freely and sensibly.\n- `# decided: ...`: the recorded answer to an earlier ambiguity. Treat it as a hard constraint,\n  exactly as binding as a rule.\n- `example` with `given` / `expect`: executable examples. They are the contract: the generated\n  code must make every example pass, and every comma-separated `expect` clause is checked.\n- `exact { ... }`: raw Python copied verbatim into the generated project. Nobody rewrites it; it\n  can be imported and called.\n\nThroughout, prefer the most conventional reading of the prose, stay consistent with the examples\nand rules, and never invent requirements the author did not state.\n\nGenerated projects follow fixed conventions. They are already decided: never ask about them,\nnever offer an option that contradicts them.\n\n- Time: the current time reaches every function as a timezone-aware `now` parameter. Code never\n  reads the system clock, and there is no \"server local time\". When a date such as \"today\"\n  matters and neither the spec nor a decision names its time zone, the time zone is a fair\n  question, but every option must name an explicit zone (UTC or an IANA name such as\n  Asia/Kolkata).\n- Rules: a rule that forbids an input makes the function raise `RuleViolation` and change\n  nothing; a rule that constrains behavior is enforced by the logic plus a runtime guard. How a\n  rule is enforced is never a question.\n- Data: the things are the data model, with the resolved types shown. Database targets use\n  SQLite through SQLModel. Emails are queued in an outbox, never sent.\n- Shape: one function per does block, named after it. Tests are derived from the examples and\n  rules, so anything an example pins down is not ambiguous.\n\n\nYour job right now: turn the never/always rules of ONE does block into pytest tests.\n\nYou see the function's signature but not its body. Each rule must hold for every input the\nfunction accepts, so test it through the public function, as a property where possible.\n\nRequirements, all mandatory:\n\n1. For every rule (R1, R2, ...) write at least one test named `test_r<n>_<few_words>` that\n   calls the function under test and asserts the rule. Report each in `tests` as\n   `{\"rule\": \"R1\", \"function\": \"<test function name>\"}`.\n2. Prefer property-based tests with Hypothesis when the rule ranges over an input space\n   (times, counts, statuses, list contents): use `@given(...)` with small, bounded strategies\n   (`st.sampled_from`, `st.integers(min_value=..., max_value=...)`, `st.timedeltas` with\n   bounds, short lists). Otherwise write focused scenario tests around the rule's boundary.\n   Always pass strategies to `@given` by keyword (`@given(tasks=st.lists(...))`), never\n   positionally: positional strategies bind to the rightmost parameters, which collides with\n   fixtures such as `now`.\n3. A rule that forbids an input (for example \"never complete a task that is already done\")\n   is checked with `pytest.raises(RuleViolation)` (from `<package>.runtime`). A rule that\n   constrains what the function does (for example \"never email a client twice in 24h\") is\n   checked by asserting on the outcome; it must not raise for valid inputs.\n4. The `now` fixture is a fixed, timezone-aware datetime; always pass `now=now` to functions\n   that take it. For database targets, tests decorated with `@given` must not use the\n   `session` fixture: open a fresh database per example with\n   `with memory_session() as session:` (from `<package>.db`). Plain tests may use the\n   `session` fixture.\n5. Build inputs with the generated models, filling unrelated required fields with plausible\n   fixed values. Observe queued emails with `queued_emails(...)` from `<package>.outbox`.\n6. No network, no files, no sleeping, no mocking of the function under test. Absolute imports\n   only. The module must not mention the compiler or these instructions.\n\nReturn the complete module in `module_source` (no markdown fences) and the rule mapping in\n`tests`.\n"
+      },
+      {
+        "type": "text",
+        "text": "# Project\n\napp InvoiceChaser\ntarget: python 3.12, fastapi, sqlite\n\n# Things (data shapes) with their resolved Python types\n\nthing Invoice\n  client: text                             -> str\n  client_email: email                      -> EmailStr\n  amount: money (INR)                      -> Decimal  (currency INR)\n  due: date                                -> date\n  status: one of draft, sent, paid, overdue -> InvoiceStatus\n  reminders_sent: number = 0               -> int\n  last_reminded_at: datetime?              -> Optional[datetime]\n\n# Generated project\n\nPython package `invoice_chaser` (src layout). Use absolute imports, for example `from invoice_chaser.models import ...`.\n\n## invoice_chaser.models (generated from the things; never redefine them)\n\n```python\nfrom __future__ import annotations\n\nfrom datetime import date, datetime\nfrom decimal import Decimal\nfrom enum import StrEnum\nfrom typing import Optional\n\nfrom pydantic import EmailStr\nfrom sqlmodel import AutoString, Field, SQLModel\nfrom invoice_chaser.db import UTCDateTime\n\n# Currency of every money field, as written in the spec.\nCURRENCIES: dict[str, str] = {'Invoice.amount': 'INR'}\n\n\nclass InvoiceStatus(StrEnum):\n    DRAFT = 'draft'\n    SENT = 'sent'\n    PAID = 'paid'\n    OVERDUE = 'overdue'\n\n\nclass Invoice(SQLModel, table=True):\n    id: Optional[int] = Field(default=None, primary_key=True)\n    client: str\n    client_email: EmailStr = Field(sa_type=AutoString)\n    amount: Decimal = Field(max_digits=14, decimal_places=2, description=\"money (INR)\")\n    due: date\n    status: InvoiceStatus\n    reminders_sent: int = Field(default=0)\n    last_reminded_at: Optional[datetime] = Field(default=None, sa_type=UTCDateTime)\n```\n\n## invoice_chaser.runtime\n- `guard(condition, rule_id, detail=\"\")`: raise `RuleViolation` when `condition` is falsy.\n- `RuleViolation`: subclass of `AssertionError`; has `.rule_id` and `.rule` (the rule text).\n- `utcnow()`: the current time as an aware UTC datetime.\n\n## invoice_chaser.outbox (a database table: emails are queued, never sent)\n- `OutboxEmail`: SQLModel table `outbox` with `id`, `to`, `subject`, `body`, `queued_at`\n  (aware datetime) and `ref` (free text saying what the email is about, e.g. \"Invoice:3\").\n- `queue_email(session, *, to, subject, body, now, ref=\"\") -> OutboxEmail`: add and flush.\n- `queued_emails(session, *, to=None) -> list[OutboxEmail]`: queued emails, oldest first.\n\n## invoice_chaser.db\n- `memory_session()`: context manager yielding a `Session` on a fresh in-memory database with\n  every table created. For tests.\n- `session_scope()`: context manager yielding a production `Session` that commits on success.\n- Datetime columns store aware datetimes and return them aware, in UTC.\n\n## Test fixtures (tests/conftest.py)\n- `now`: a fixed, timezone-aware datetime, 2026-03-11T04:30:00+00:00, which is Wednesday\n  2026-03-11 10:00 in Asia/Kolkata.\n- `session`: a fresh in-memory database `Session` with every table created.\n- Hypothesis runs derandomized with 50 examples per test, no deadline, and function-scoped\n  fixtures allowed.\n\n## Allowed imports\nThe Python standard library (except os, sys, subprocess, socket, shutil, pathlib, importlib,\nthreading, multiprocessing, urllib, http, pickle and builtins), pydantic, sqlmodel,\nsqlalchemy, the package itself, and in tests also pytest and hypothesis.\n",
+        "cache_control": {
+          "type": "ephemeral"
+        }
+      }
+    ],
+    "messages": [
+      {
+        "role": "user",
+        "content": "Function under test: `from invoice_chaser.chase_overdue_invoices import chase_overdue_invoices`\nSignature: `def chase_overdue_invoices(session: Session, *, now: datetime | None=None) -> list[Invoice]`\nTarget has a database: yes (use the `session` fixture)\n\nThe does block it implements:\n\ndoes chase overdue invoices\n  [L0] every weekday at 10:00 IST\n  [L1] find invoices where due < today and status = sent or overdue\n    # decided: today is the current date in Asia/Kolkata; due strictly before today\n  [L2] mark them overdue\n  [L3] queue a reminder email to the client ~ polite first, firmer after 2nd reminder\n    # decided: Firm when reminders_sent >= 2 before this send (3rd reminder onward)\n  [L4] increment reminders_sent and set last_reminded_at\n  [L5] (R1) never email the same client twice in 24h\n    # decided: Still mark it overdue, but queue no email and leave reminders_sent and last_reminded_at unchanged\n    # decided: Same client_email; one email per client per run, others are skipped\n  [L6] (R2) always skip invoices with status paid\n\nRules to test:\n- R1 (guard id chase_overdue_invoices:R1): never email the same client twice in 24h\n- R2 (guard id chase_overdue_invoices:R2): always skip invoices with status paid\n\nWrite the test module.\n"
+      }
+    ],
+    "output_config": {
+      "effort": "low",
+      "format": {
+        "type": "json_schema",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "module_source": {
+              "type": "string"
+            },
+            "tests": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "rule": {
+                    "type": "string"
+                  },
+                  "function": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "rule",
+                  "function"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "module_source",
+            "tests"
+          ],
+          "additionalProperties": false
+        }
+      }
+    }
+  },
+  "output": {
+    "module_source": "from datetime import date, datetime, timedelta\nfrom decimal import Decimal\n\nfrom hypothesis import given, strategies as st\n\nfrom invoice_chaser.chase_overdue_invoices import chase_overdue_invoices\nfrom invoice_chaser.db import memory_session\nfrom invoice_chaser.models import Invoice, InvoiceStatus\nfrom invoice_chaser.outbox import queued_emails, queue_email\n\n\ndef _inv(now, email=\"a@example.com\", status=InvoiceStatus.SENT, reminders=0, last=None, days_late=5):\n    return Invoice(\n        client=\"Acme\",\n        client_email=email,\n        amount=Decimal(\"100.00\"),\n        due=date(2026, 3, 11) - timedelta(days=days_late),\n        status=status,\n        reminders_sent=reminders,\n        last_reminded_at=last,\n    )\n\n\n@given(n=st.integers(min_value=2, max_value=4),\n       status=st.sampled_from([InvoiceStatus.SENT, InvoiceStatus.OVERDUE]))\ndef test_r1_one_email_per_client_per_run(now, n, status):\n    with memory_session() as session:\n        for i in range(n):\n            session.add(_inv(now, status=status, days_late=i + 1))\n        session.flush()\n        chase_overdue_invoices(session, now=now)\n        assert len(queued_emails(session, to=\"a@example.com\")) == 1\n        invs = session.query(Invoice).all()\n        assert all(i.status == InvoiceStatus.OVERDUE for i in invs)\n        assert sum(i.reminders_sent for i in invs) == 1\n\n\n@given(hours=st.integers(min_value=0, max_value=23))\ndef test_r1_recent_reminder_blocks_email(now, hours):\n    with memory_session() as session:\n        last = now - timedelta(hours=hours)\n        session.add(_inv(now, reminders=1, last=last))\n        session.flush()\n        queue_email(session, to=\"a@example.com\", subject=\"s\", body=\"b\",\n                    now=last, ref=\"Invoice:0\")\n        chase_overdue_invoices(session, now=now)\n        assert len(queued_emails(session, to=\"a@example.com\")) == 1\n        inv = session.query(Invoice).one()\n        assert inv.status == InvoiceStatus.OVERDUE\n        assert inv.reminders_sent == 1\n        assert inv.last_reminded_at == last\n\n\n@given(status=st.sampled_from([InvoiceStatus.PAID]), days=st.integers(min_value=1, max_value=60))\ndef test_r2_paid_skipped(now, status, days):\n    with memory_session() as session:\n        session.add(_inv(now, status=status, days_late=days))\n        session.flush()\n        chase_overdue_invoices(session, now=now)\n        assert queued_emails(session) == []\n        inv = session.query(Invoice).one()\n        assert inv.status == InvoiceStatus.PAID\n        assert inv.reminders_sent == 0\n        assert inv.last_reminded_at is None\n",
+    "tests": [
+      {
+        "rule": "R1",
+        "function": "test_r1_one_email_per_client_per_run"
+      },
+      {
+        "rule": "R1",
+        "function": "test_r1_recent_reminder_blocks_email"
+      },
+      {
+        "rule": "R2",
+        "function": "test_r2_paid_skipped"
+      }
+    ]
+  }
+}

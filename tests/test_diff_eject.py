@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 
 import pytest
-from fakes import replaying_llm
+from fakes import synthetic_llm
 from typer.testing import CliRunner
 
 from loom.build import BuildOptions, build
@@ -23,7 +23,7 @@ def built(tmp_path: Path, name: str = "todo") -> tuple[Path, Path]:
     src = tmp_path / f"{name}.loom"
     shutil.copy(ROOT / "examples" / f"{name}.loom", src)
     out = tmp_path / "out"
-    report = build(src, replaying_llm, BuildOptions(out_dir=out, yes=True, echo=lambda s: None))
+    report = build(src, synthetic_llm, BuildOptions(out_dir=out, yes=True, echo=lambda s: None))
     assert report.ok
     return src, out
 
@@ -189,7 +189,7 @@ def test_eject_leaves_a_plain_project_that_still_passes(tmp_path: Path) -> None:
         assert path.stat().st_mode & 0o200  # writable again
 
     with pytest.raises(LockError, match=r"no invoice_chaser\.loom\.lock manages them"):
-        build(src, replaying_llm, BuildOptions(out_dir=out, yes=True, echo=lambda s: None))
+        build(src, synthetic_llm, BuildOptions(out_dir=out, yes=True, echo=lambda s: None))
 
 
 def test_eject_reports_leftovers_and_requires_a_project(tmp_path: Path) -> None:

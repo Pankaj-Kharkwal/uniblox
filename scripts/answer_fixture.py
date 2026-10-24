@@ -1,6 +1,7 @@
-"""Turn a pending mock request into a recorded fixture, with a hand-written answer.
+"""Turn a pending mock request into a fixture, with a hand-written answer.
 
-Used only when no ANTHROPIC_API_KEY is available. The result is marked
+Only for when neither an API key nor Claude Code is available; prefer recording real responses
+(`LOOM_RECORD=1 loom build ... --backend claude-code`). The result is marked
 ``"source": "hand-authored"`` so it is never mistaken for a real model response; re-record with
 ``LOOM_RECORD=1`` to replace it.
 

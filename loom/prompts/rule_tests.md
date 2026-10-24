@@ -12,6 +12,9 @@ Requirements, all mandatory:
    (times, counts, statuses, list contents): use `@given(...)` with small, bounded strategies
    (`st.sampled_from`, `st.integers(min_value=..., max_value=...)`, `st.timedeltas` with
    bounds, short lists). Otherwise write focused scenario tests around the rule's boundary.
+   Always pass strategies to `@given` by keyword (`@given(tasks=st.lists(...))`), never
+   positionally: positional strategies bind to the rightmost parameters, which collides with
+   fixtures such as `now`.
 3. A rule that forbids an input (for example "never complete a task that is already done")
    is checked with `pytest.raises(RuleViolation)` (from `<package>.runtime`). A rule that
    constrains what the function does (for example "never email a client twice in 24h") is

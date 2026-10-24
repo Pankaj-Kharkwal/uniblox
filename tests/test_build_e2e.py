@@ -20,7 +20,7 @@ def copy_example(tmp_path: Path, name: str) -> Path:
     return dst
 
 
-def test_build_todo_is_green_and_standalone(tmp_path: Path) -> None:
+def test_build_todo_is_green_and_standalone(tmp_path: Path, synthetic_cli: None) -> None:
     src = copy_example(tmp_path, "todo")
     out = tmp_path / "out" / "todo_list"
     res = runner.invoke(app, ["build", str(src), "--yes", "--out", str(out)])
@@ -61,7 +61,9 @@ def test_loom_test_without_a_build(tmp_path: Path) -> None:
     assert "run `loom build" in res.output
 
 
-def test_second_build_is_nothing_to_rebuild_with_zero_calls(tmp_path: Path) -> None:
+def test_second_build_is_nothing_to_rebuild_with_zero_calls(
+    tmp_path: Path, synthetic_cli: None
+) -> None:
     src = copy_example(tmp_path, "todo")
     out = tmp_path / "out" / "todo_list"
     first = runner.invoke(app, ["build", str(src), "--yes", "--out", str(out)])
@@ -75,11 +77,11 @@ def test_second_build_is_nothing_to_rebuild_with_zero_calls(tmp_path: Path) -> N
 
 
 def test_red_report_after_max_iters(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from fakes import recorded_outputs, replaying_llm
+    from fakes import synthetic_llm, synthetic_outputs
 
-    good = recorded_outputs()[("codegen", "does:summarize_tasks")]
+    good = synthetic_outputs()[("codegen", "does:summarize_tasks")]
     buggy = good["module_source"].replace("summary.done += 1", "summary.done += 2")
-    llm = replaying_llm(
+    llm = synthetic_llm(
         {
             ("codegen", "does:summarize_tasks"): {**good, "module_source": buggy},
             ("repair", "does:summarize_tasks"): {"module_source": buggy, "notes": ""},

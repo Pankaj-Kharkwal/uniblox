@@ -132,10 +132,32 @@ def _run(llm: LLM, request: LLMRequest, check: Any, what: str) -> str:
     return source
 
 
+def _with_broken(prompt: str, broken: tuple[str, str] | None) -> str:
+    """Add the previous module and the error it hit before reaching the function under test."""
+    if broken is None:
+        return prompt
+    source, error = broken
+    return (
+        f"{prompt}\nYour previous test module could not run: it failed before reaching the "
+        f"function under test, so the test itself is broken.\n\nError:\n```\n{error}\n```\n\n"
+        f"Previous module:\n```python\n{source}```\n\nReturn a corrected answer.\n"
+    )
+
+
 def example_tests(
-    llm: LLM, fe: Frontend, does: Does, proj: Project, signature: str, *, context: str
+    llm: LLM,
+    fe: Frontend,
+    does: Does,
+    proj: Project,
+    signature: str,
+    *,
+    context: str,
+    broken: tuple[str, str] | None = None,
 ) -> str | None:
-    """The example test module for a block, or None when it has no examples."""
+    """The example test module for a block, or None when it has no examples.
+
+    ``broken`` is a previous attempt (source, error) whose tests could not even run.
+    """
     if not does.examples:
         return None
     ids = clause_ids(does)
@@ -144,7 +166,7 @@ def example_tests(
         label=f"does:{does.slug}",
         system=system_prompt("example_tests"),
         context=context,
-        prompt=_examples_prompt(does, proj, signature),
+        prompt=_with_broken(_examples_prompt(does, proj, signature), broken),
         schema=EXAMPLE_SCHEMA,
         effort="low",
     )
@@ -158,7 +180,14 @@ def example_tests(
 
 
 def rule_tests(
-    llm: LLM, fe: Frontend, does: Does, proj: Project, signature: str, *, context: str
+    llm: LLM,
+    fe: Frontend,
+    does: Does,
+    proj: Project,
+    signature: str,
+    *,
+    context: str,
+    broken: tuple[str, str] | None = None,
 ) -> str | None:
     """The rule test module for a block, or None when it has no rules."""
     if not does.rules:
@@ -169,7 +198,7 @@ def rule_tests(
         label=f"does:{does.slug}",
         system=system_prompt("rule_tests"),
         context=context,
-        prompt=_rules_prompt(does, proj, signature),
+        prompt=_with_broken(_rules_prompt(does, proj, signature), broken),
         schema=RULE_SCHEMA,
         effort="low",
     )

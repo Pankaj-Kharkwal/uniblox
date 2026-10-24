@@ -140,6 +140,8 @@ def _red_report(report: BuildReport) -> None:
     by_block: dict[str, list[str]] = {}
     for case in result.failures:
         first = case.message.splitlines()[0] if case.message else case.outcome
+        if case.broken_test:
+            first = f"the generated test itself cannot run ({first})"
         by_block.setdefault(case.block or case.file, []).append(
             f"{case.file}::{case.name}: {first}"
         )

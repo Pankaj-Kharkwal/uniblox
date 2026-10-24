@@ -57,12 +57,23 @@ LOOM_MOCK=1 loom build examples/todo.loom --yes
 cd out/todo_list && pytest            # the generated project stands on its own
 ```
 
-With Claude, set a key and drop `LOOM_MOCK`:
+With real Claude, drop `LOOM_MOCK` and use either backend:
 
 ```bash
-export ANTHROPIC_API_KEY=...          # a Claude Console key
-loom build examples/invoice_chaser.loom --yes
+# A Claude subscription (Pro/Max) through Claude Code: no API key needed
+npm install -g @anthropic-ai/claude-code && claude   # log in once with /login
+loom build examples/invoice_chaser.loom --yes --backend claude-code
+
+# Or an API key from the Claude Console
+export ANTHROPIC_API_KEY=...
+loom build examples/invoice_chaser.loom --yes --backend api
 ```
+
+`--backend auto` is the default: it uses the API when `ANTHROPIC_API_KEY` is set, otherwise
+Claude Code when `claude` is installed. On a server or in CI, create a token with
+`claude setup-token` and export it as `CLAUDE_CODE_OAUTH_TOKEN`. Both backends send the same
+requests, with structured output and no tools, and share cache keys. A response recorded
+through one is replayed for the other.
 
 `--yes` accepts the suggested answer to every ambiguity. Without it, `loom` asks you each
 question on the terminal. Either way, the answers are written into the `.loom` file.
@@ -124,6 +135,7 @@ loom eject <file>   strip Loom metadata and leave a plain Python project
 Flags:
 
 - `--model`: default `claude-sonnet-5-5`, or `$LOOM_MODEL`.
+- `--backend`: `api`, `claude-code` or `auto` (the default).
 - `--max-iters`: repair rounds, default 4.
 - `--yes`: accept the suggested answers.
 - `--force`: rebuild everything, overwriting hand edits.
@@ -225,15 +237,18 @@ LOOM_RECORD=1 loom build examples/todo.loom --yes   # record real responses as f
 
 These are stated honestly:
 
-- **The recorded model responses are hand-written.** This environment had no API key, so
-  every file in `tests/fixtures/llm/` is marked `"source": "hand-authored"`. The pipeline
-  around them is real; how often Claude itself reaches green is **not yet measured**.
-  Re-record with `LOOM_RECORD=1`, then see `docs/PLAN.md` (phase 2).
+- **Real-model results come from two small examples.** `tests/fixtures/llm/` holds real
+  responses recorded through Claude Code (`"source": "claude-code"`). The mechanics tests use
+  hand-written outputs in `tests/fixtures/synthetic/` instead, because they need controlled
+  (sometimes deliberately wrong) answers. A 20-spec benchmark of the hands-off green rate is
+  still to come (`docs/PLAN.md`, phase 2).
 - **Untested against the live API:**
   - the server-side refusal fallback (a beta; `LOOM_NO_FALLBACK=1` turns it off);
   - prompt-cache hit rates.
-- **A generated test can be wrong.** The loop never edits tests, so a mistranslated example
-  stays red. Fix the example, then rebuild.
+- **A generated test can be wrong.** A test that cannot even run (a missing fixture, a crash
+  in its own setup) goes back to the test writer before the tests are locked. After that, the
+  loop never edits tests, so a test that runs but asserts the wrong thing stays red, and the
+  red report says so. Fix the example, then rebuild.
 - **Generated code runs on your machine.** The green loop runs pytest in the current
   interpreter. The import allowlist and the ban on `open`, `exec`, `eval`, `os` and
   `subprocess` reduce risk, but they are not a sandbox.
